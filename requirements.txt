@@ -1,0 +1,6 @@
+scipy
+torch>=1.11,<2.0
+pyro-ppl>=1.8.2
+gpytorch==1.9.1
+linear_operator==0.3.0
+botorch>=0.8.1

@@ -1,0 +1,33 @@
+{	
+    "num_iterations": 200,
+    "num_initial_points": 10,
+    "function_name": "rocket_std_0.3",
+	"optimization_kwargs": {
+	},
+    "scalarization_kwargs": {
+		"label": "hypervolume"
+	},
+	"util_kwargs": {
+		"outcome_transform": "normalize"
+	},
+	"sampling_kwargs_util": {
+		"label": "unit-vector",
+		"num_weights": 2048,
+		"transform_reference_point": false
+	},
+	"sampling_kwargs_acq": {
+		"label": "unit-vector",
+		"num_weights": 256,
+		"transform_reference_point": true
+	},
+	"acq_kwargs": {
+		"outcome_transform": "normalize-observations",
+		"num_samples": 128,
+		"beta": 2.0
+	},
+	"model_kwargs": {
+		"use_model_list": true,
+		"use_fixed_noise": false
+	},
+	"save_frequency": 5
+}
