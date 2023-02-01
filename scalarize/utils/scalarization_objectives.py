@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 r"""
-Helper utilities for constructing scalarizations.
+Helper utilities for constructing the scalarization-based objectives.
 """
 
 from __future__ import annotations

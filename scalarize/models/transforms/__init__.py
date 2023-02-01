@@ -2,8 +2,7 @@
 
 from scalarize.models.transforms.outcome import GaussianQuantile, Normalize
 
-
 __all__ = [
-    "Normalize",
     "GaussianQuantile",
+    "Normalize",
 ]
