@@ -32,7 +32,7 @@ class Uncertainty(MultiObjectiveAnalyticAcquisitionFunction):
         model: Model,
         objective: Optional[AnalyticMultiOutputObjective] = None,
     ) -> None:
-        r"""The matrix norm of the posterior covariance matrix.
+        r"""The mean trace of the posterior covariance matrix.
 
         Args:
             model: A fitted multi-outcome GP model.

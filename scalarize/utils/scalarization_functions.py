@@ -71,7 +71,7 @@ class LinearScalarization(ScalarizationFunction):
                 reference points.
             invert: If True, the reference point is assumed to be the nadir, else we
                 assume it is the utopia.
-            clip: If True, we clip the distance at zero.
+            clip: If True, we clip the residual at zero.
         """
         super().__init__()
 
@@ -111,7 +111,7 @@ class LinearScalarization(ScalarizationFunction):
                 reference points.
             invert: If True, the reference point is assumed to be the nadir, else we
                 assume it is the utopia.
-            clip: If True, we clip the distance at zero.
+            clip: If True, we clip the residual at zero.
 
         Returns:
             A `batch_shape x num_points x num_weights x num_ref`-dim Tensor
@@ -173,7 +173,7 @@ class LpScalarization(ScalarizationFunction):
                 reference points.
             invert: If True, the reference point is assumed to be the nadir, else we
                 assume it is the utopia.
-            clip: If True, we clip the distance at zero.
+            clip: If True, we clip the residual at zero.
         """
         super().__init__()
 
@@ -216,7 +216,7 @@ class LpScalarization(ScalarizationFunction):
                 reference points.
             invert: If True, the reference point is assumed to be the nadir, else we
                 assume it is the utopia.
-            clip: If True, we clip the distance at zero.
+            clip: If True, we clip the residual at zero.
 
         Returns:
             A `batch_shape x num_points x num_weights x num_ref`-dim Tensor
@@ -233,7 +233,9 @@ class LpScalarization(ScalarizationFunction):
             diff = torch.clamp(diff, min=0)
 
         # `num_points x batch_shape x num_weights x num_ref`
-        scalarized_Y = sign * torch.norm(weights.unsqueeze(-2) * diff, p=p, dim=-1)
+        scalarized_Y = sign * torch.norm(
+            weights.unsqueeze(-2) * diff, p=p, dim=-1
+        )
 
         # `batch_shape x num_points x num_weights x num_ref`
         return scalarized_Y.movedim(0, -3)
@@ -394,6 +396,7 @@ class LengthScalarization(ScalarizationFunction):
         self,
         weights: Tensor,
         ref_points: Tensor,
+        clip: bool = True,
     ) -> None:
         r"""Length scalarization function.
 
@@ -401,21 +404,27 @@ class LengthScalarization(ScalarizationFunction):
             weights: A `batch_shape x num_weights x M`-dim Tensor of weights.
             ref_points: A `batch_shape x num_ref x M`-dim Tensor containing the
                 reference points.
+            clip: If True, we clamp the length at zero.
         """
         super().__init__()
 
         self.weights = weights
         self.ref_points = ref_points
+        self.clip = clip
 
     @staticmethod
     def evaluate(
         Y: Tensor,
         weights: Tensor,
         ref_points: Tensor,
+        clip: bool = True,
     ) -> Tensor:
         r"""Computes the length scalarization.
 
-            s(Y) = min(max(0, (Y - r) / w))
+            If `clip=True`:
+                s(Y) = min(max(0, (Y - r) / w))
+            Else:
+                s(Y) = min((Y - r) / w)
 
         Args:
             Y: An `batch_shape x num_points x M`-dim Tensor containing the objective
@@ -423,18 +432,20 @@ class LengthScalarization(ScalarizationFunction):
             weights: A `batch_shape x num_weights x M`-dim Tensor of weights.
             ref_points: A `batch_shape x num_ref x M`-dim Tensor containing the
                 reference points.
+            clip: If True, we clamp the length at zero.
 
         Returns:
             A `batch_shape x num_points x num_weights x num_ref`-dim Tensor
                 containing the scalarized objective vectors.
         """
+
         scalarized_Y = ChebyshevScalarization.evaluate(
             Y=Y,
             weights=1 / weights,
             ref_points=ref_points,
             invert=True,
             pseudo=True,
-            clip=True,
+            clip=clip,
         )
 
         # `batch_shape x num_points x num_weights x num_ref`
@@ -455,6 +466,7 @@ class LengthScalarization(ScalarizationFunction):
             Y=Y,
             weights=self.weights,
             ref_points=self.ref_points,
+            clip=self.clip,
         )
 
 
@@ -462,25 +474,43 @@ class HypervolumeScalarization(ScalarizationFunction):
     r"""Hypervolume scalarization function."""
     num_params = 2
 
-    def __init__(self, weights: Tensor, ref_points: Tensor) -> None:
+    def __init__(
+            self,
+            weights: Tensor,
+            ref_points: Tensor,
+            clip: bool = True
+    ) -> None:
         r"""Hypervolume scalarization function.
 
         Args:
             weights: A `batch_shape x num_weights x M`-dim Tensor of weights.
             ref_points: A `batch_shape x num_ref x M`-dim Tensor containing the
                 reference points.
+            clip: If True, we clamp the values at zero.
         """
         super().__init__()
 
         self.weights = weights
         self.ref_points = ref_points
+        self.clip = clip
 
     @staticmethod
-    def evaluate(Y: Tensor, weights: Tensor, ref_points: Tensor) -> Tensor:
+    def evaluate(
+            Y: Tensor,
+            weights: Tensor,
+            ref_points: Tensor,
+            clip: bool = True,
+    ) -> Tensor:
         r"""Computes the hypervolume scalarization.
 
             c = π^(M/2) / (2^M Γ(M/2 + 1))
-            s(Y) = c min(max(0, (Y - r) / w)^M)
+
+            If `clip=True`:
+                s(Y) = c g(min(max(0, (Y - r) / w)), M)
+            Else:
+                s(Y) = c g(min((Y - r) / w)), M)
+
+            where g(z, M) = sign(z) * abs(z)^M
 
         Args:
             Y: An `batch_shape x num_points x M`-dim Tensor containing the objective
@@ -488,19 +518,24 @@ class HypervolumeScalarization(ScalarizationFunction):
             weights: A `batch_shape x num_weights x M`-dim Tensor of weights.
             ref_points: A `batch_shape x num_ref x M`-dim Tensor containing the
                 reference points.
+            clip: If True, we clamp the values at zero.
 
         Returns:
             A `batch_shape x num_points x num_weights x num_ref`-dim Tensor
                 containing the scalarized objective vectors.
         """
         length = LengthScalarization.evaluate(
-            Y=Y, weights=weights, ref_points=ref_points
+            Y=Y, weights=weights, ref_points=ref_points, clip=clip
         )
         M = weights.shape[-1]
-        # TODO: might want to cache this value
-        constant = pi ** (M / 2) / (2**M * gamma(M / 2 + 1))
-
-        return constant * torch.pow(length, M)
+        # We multiple the constant before taking the power for numerical stability.
+        constant = pi ** (1 / 2) / (2 * gamma(M / 2 + 1) ** (1 / M))
+        
+        if clip:
+            return torch.pow(constant * length, M)
+        else:
+            return torch.sign(length) * torch.pow(constant * abs(length), M)
+        
 
     def forward(self, Y: Tensor) -> Tensor:
         r"""Computes the hypervolume scalarization.
@@ -517,6 +552,7 @@ class HypervolumeScalarization(ScalarizationFunction):
             Y=Y,
             weights=self.weights,
             ref_points=self.ref_points,
+            clip=self.clip,
         )
 
 
@@ -926,3 +962,4 @@ class KSScalarization(ScalarizationFunction):
         return self.evaluate(
             Y=Y, utopia_points=self.utopia_points, nadir_points=self.nadir_points
         )
+

@@ -455,7 +455,8 @@ class UnitVectorErfNormalize(ScalarizationParameterTransform):
             transformed_X: An `batch_shape x num_objectives`-dim Tensor containing
                 the scalarization parameters.
         """
-        eX = torch.erfinv(X)
+        # Note that torch.erfinv(1) = inf, therefore we minus epsilon.
+        eX = torch.erfinv(X - torch.finfo(X.dtype).eps).clamp_min(0)
         return eX / torch.sqrt(torch.sum(torch.pow(eX, 2), dim=-1, keepdim=True))
 
     def forward(self, Y: Tensor) -> Tensor:
