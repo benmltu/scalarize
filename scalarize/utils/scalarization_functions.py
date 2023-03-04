@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 
 r"""
-Scalarization functions for a maximization problem.
+Scalarization functions for multi-objective optimization. The scalarized values are
+designed such that larger values imply greater quality. The default settings are
+designed for a maximization problem.
 """
 
 from __future__ import annotations
@@ -54,101 +56,61 @@ class ScalarizationFunction(Module, ABC):
 
 class LinearScalarization(ScalarizationFunction):
     r"""Linear scalarization function."""
-    num_params = 2
+    num_params = 1
 
-    def __init__(
-        self,
-        weights: Tensor,
-        ref_points: Tensor,
-        invert: bool = False,
-        clip: bool = False,
-    ) -> None:
+    def __init__(self, weights: Tensor, negate: bool = False) -> None:
         r"""Linear scalarization function.
 
         Args:
             weights: A `batch_shape x num_weights x M`-dim Tensor of weights.
-            ref_points: A `batch_shape x num_ref x M`-dim Tensor containing the
-                reference points.
-            invert: If True, the reference point is assumed to be the nadir, else we
-                assume it is the utopia.
-            clip: If True, we clip the residual at zero.
+            negate: If True, we negate the scalarization function.
         """
         super().__init__()
 
         self.weights = weights
-        self.ref_points = ref_points
-        self.invert = invert
-        self.clip = clip
+        self.negate = negate
 
     @staticmethod
-    def evaluate(
-        Y: Tensor,
-        weights: Tensor,
-        ref_points: Tensor,
-        invert: bool = False,
-        clip: bool = False,
-    ) -> Tensor:
-        r"""Computes the linear scalarization. For the linear scalarization, the
-        reference points can be set arbitrarily.
+    def evaluate(Y: Tensor, weights: Tensor, negate: bool = False) -> Tensor:
+        r"""Computes the linear scalarization.
 
-            If `invert=False`:
-                If `clip=False`:
-                    s(Y) = - sum(w * (r - Y))
-                Else:
-                    s(Y) = - sum(w * max(r - Y, 0))
-
-            If `invert=True`:
-                If `clip=False`:
-                    s(Y) = sum(w * (Y - r))
-                Else:
-                    s(Y) = sum(w * max(Y - r, 0))
+            If `negate=False`:
+                s(Y) = sum(w * Y)
+            Else:
+                s(Y) = - sum(w * Y)
 
         Args:
             Y: An `batch_shape x num_points x M`-dim Tensor containing the objective
                 vectors.
             weights: A `batch_shape x num_weights x M`-dim Tensor of weights.
-            ref_points: A `batch_shape x num_ref x M`-dim Tensor containing the
-                reference points.
-            invert: If True, the reference point is assumed to be the nadir, else we
-                assume it is the utopia.
-            clip: If True, we clip the residual at zero.
 
         Returns:
-            A `batch_shape x num_points x num_weights x num_ref`-dim Tensor
-                containing the scalarized objective vectors.
+            A `batch_shape x num_points x num_weights`-dim Tensor containing the
+                scalarized objective vectors.
         """
-        sign = 1.0 if invert else -1.0
+        sign = -1.0 if negate else 1.0
         # `num_points x batch_shape x 1 x M`
         reshaped_Y = Y.movedim(-2, 0).unsqueeze(-2)
-        # `num_points x batch_shape x 1 x num_ref x M`
-        diff = sign * (reshaped_Y - ref_points).unsqueeze(-3)
-
-        if clip:
-            diff = torch.clamp(diff, min=0)
-
-        # `num_points x batch_shape x num_weights x num_ref`
-        scalarized_Y = sign * torch.sum(weights.unsqueeze(-2) * diff, dim=-1)
-        # `batch_shape x num_points x num_weights x num_ref`
-        return scalarized_Y.movedim(0, -3)
+        # `batch_shape x num_points x num_weights`
+        scalarized_Y = torch.sum(weights * reshaped_Y, dim=-1).movedim(0, -2)
+        # `batch_shape x num_points x num_weights`
+        return sign * scalarized_Y
 
     def forward(self, Y: Tensor) -> Tensor:
-        r"""Computes the linear scalarization. For the linear scalarization, the
-        reference points can be set arbitrarily.
+        r"""Computes the linear scalarization.
 
         Args:
             Y: An `batch_shape x num_points x M`-dim Tensor containing the objective
                 vectors.
 
         Returns:
-            A `batch_shape x num_points num_weights x num_ref`-dim Tensor containing
-                the scalarized objective vectors.
+            A `batch_shape x num_points num_weights`-dim Tensor containing the
+                scalarized objective vectors.
         """
         return self.evaluate(
             Y=Y,
             weights=self.weights,
-            ref_points=self.ref_points,
-            invert=self.invert,
-            clip=self.clip,
+            negate=self.negate,
         )
 
 
@@ -163,6 +125,7 @@ class LpScalarization(ScalarizationFunction):
         ref_points: Tensor,
         invert: bool = False,
         clip: bool = False,
+        negate: bool = True,
     ) -> None:
         r"""Lp scalarization function.
 
@@ -171,9 +134,12 @@ class LpScalarization(ScalarizationFunction):
             p: The power of the Lp norm.
             ref_points: A `batch_shape x num_ref x M`-dim Tensor containing the
                 reference points.
-            invert: If True, the reference point is assumed to be the nadir, else we
-                assume it is the utopia.
+            invert: If True, the residual is defined as the difference from the
+                reference point `y-r`, else the residual is defined as the difference
+                towards the reference point `r-y`, where `y` is an objective vector
+                and `r` is a reference point.
             clip: If True, we clip the residual at zero.
+            negate: If True, we negate the distance.
         """
         super().__init__()
 
@@ -183,6 +149,7 @@ class LpScalarization(ScalarizationFunction):
         self.ref_points = ref_points
         self.invert = invert
         self.clip = clip
+        self.negate = negate
 
     @staticmethod
     def evaluate(
@@ -192,20 +159,24 @@ class LpScalarization(ScalarizationFunction):
         ref_points: Tensor,
         invert: bool = False,
         clip: bool = False,
+        negate: bool = True,
     ) -> Tensor:
-        r"""Computes the Lp scalarization.
+        r"""Computes the Lp scalarization or one of its variants.
 
             If `invert=False`:
-                If `clip=False`:
-                    s(Y) = - ||w * (r - Y)||_p
-                Else:
-                    s(Y) = - ||w * max(r - Y, 0)||_p
+                residual = r - Y
+            Else:
+                residual = Y - r
 
-            If `invert=True`:
-                If `clip=False`:
-                    s(Y) = ||w * (Y - r)||_p
-                Else:
-                    s(Y) = ||w * max(Y - r, 0)||_p
+            If `clip = True`:
+                residual = max(residual, 0)
+
+            If `negate=False`:
+                sign = 1
+            Else:
+                sign = -1
+
+            s(Y) = sign * ||w * residual||_p
 
         Args:
             Y: An `batch_shape x num_points x M`-dim Tensor containing the objective
@@ -214,34 +185,40 @@ class LpScalarization(ScalarizationFunction):
             p: The power of the Lp norm.
             ref_points: A `batch_shape x num_ref x M`-dim Tensor containing the
                 reference points.
-            invert: If True, the reference point is assumed to be the nadir, else we
-                assume it is the utopia.
+            invert: If True, the residual is defined as the difference from the
+                reference point `y-r`, else the residual is defined as the difference
+                towards the reference point `r-y`, where `y` is an objective vector
+                and `r` is a reference point.
             clip: If True, we clip the residual at zero.
+            negate: If True, we negate the distance.
 
         Returns:
             A `batch_shape x num_points x num_weights x num_ref`-dim Tensor
                 containing the scalarized objective vectors.
         """
-        sign = 1.0 if invert else -1.0
+        sign = -1.0 if negate else 1.0
+        diff_sign = -1.0 if invert else 1.0
+
         # `num_points x batch_shape x 1 x M`
         reshaped_Y = Y.movedim(-2, 0).unsqueeze(-2)
 
         # `num_points x batch_shape x 1 x num_ref x M`
-        diff = sign * (reshaped_Y - ref_points).unsqueeze(-3)
+        diff = diff_sign * (ref_points - reshaped_Y).unsqueeze(-3)
 
         if clip:
             diff = torch.clamp(diff, min=0)
 
-        # `num_points x batch_shape x num_weights x num_ref`
-        scalarized_Y = sign * torch.norm(
-            weights.unsqueeze(-2) * diff, p=p, dim=-1
-        )
+        # `batch_shape x num_points x num_weights x num_ref x M`
+        weighted_diff = (weights.unsqueeze(-2) * diff).movedim(0, -4)
 
         # `batch_shape x num_points x num_weights x num_ref`
-        return scalarized_Y.movedim(0, -3)
+        scalarized_Y = torch.norm(weighted_diff, p=p, dim=-1)
+
+        # `batch_shape x num_points x num_weights x num_ref`
+        return sign * scalarized_Y
 
     def forward(self, Y: Tensor) -> Tensor:
-        r"""Computes the Lp scalarization.
+        r"""Computes the Lp scalarization or one of its variants.
 
         Args:
             Y: An `batch_shape x num_points x M`-dim Tensor containing the objective
@@ -258,6 +235,7 @@ class LpScalarization(ScalarizationFunction):
             ref_points=self.ref_points,
             invert=self.invert,
             clip=self.clip,
+            negate=self.negate,
         )
 
 
@@ -272,6 +250,7 @@ class ChebyshevScalarization(ScalarizationFunction):
         invert: bool = False,
         pseudo: bool = False,
         clip: bool = False,
+        negate: bool = True,
     ) -> None:
         r"""Chebyshev scalarization function.
 
@@ -279,11 +258,14 @@ class ChebyshevScalarization(ScalarizationFunction):
             weights: A `batch_shape x num_weights x M`-dim Tensor of weights.
             ref_points: A `batch_shape x num_ref x M`-dim Tensor containing the
                 reference points.
-            invert: If True, the reference point is assumed to be the nadir, else we
-                assume it is the utopia.
+            invert: If True, the residual is defined as the difference from the
+                reference point `y-r`, else the residual is defined as the difference
+                towards the reference point `r-y`, where `y` is an objective vector
+                and `r` is a reference point.
             pseudo: If True, then we compute the pseudo Chebyshev scalarization
                 function, which uses the minimum instead of the maximum.
             clip: If True, we clip the distance at zero.
+            negate: If True, we negate the distance.
         """
         super().__init__()
 
@@ -292,6 +274,7 @@ class ChebyshevScalarization(ScalarizationFunction):
         self.invert = invert
         self.pseudo = pseudo
         self.clip = clip
+        self.negate = negate
 
     @staticmethod
     def evaluate(
@@ -301,74 +284,72 @@ class ChebyshevScalarization(ScalarizationFunction):
         invert: bool = False,
         pseudo: bool = False,
         clip: bool = False,
+        negate: bool = True,
     ) -> Tensor:
-        r"""Computes the Chebyshev scalarization.
+        r"""Computes the Chebyshev scalarization or one of its variants.
 
-            If `invert=False` and `pseudo=True`:
-                If `clip=False`:
-                    s(Y) = - min(w * (r - Y))
-                Else:
-                    s(Y) = - min(w * max(r - Y, 0))
+            If `invert=False`:
+                residual = r - Y
+            Else:
+                residual = Y - r
 
-            If `invert=False` and `pseudo=False`:
-                If `clip=False`:
-                    s(Y) = - max(w * (r - Y))
-                Else:
-                    s(Y) = - max(w * max(r - Y, 0))
+            If `clip = True`:
+                residual = max(residual, 0)
 
-            If `invert=True` and `pseudo=True`:
-                If `clip=False`:
-                    s(Y) = min(w * (Y - r))
-                Else:
-                    s(Y) = min(w * max(Y - r, 0))
+            If `negate=False`:
+                sign = 1
+            Else:
+                sign = -1
 
-            If `invert=True` and `pseudo=False`:
-                If `clip=False`:
-                    s(Y) = max(w * (Y - r))
-                Else:
-                    s(Y) = max(w * max(Y - r, 0))
+            If `pseudo=False`:
+                s(Y) = sign * max(w * residual)
+            Else:
+                s(Y) = sign * min(w * residual)
+
         Args:
             Y: An `batch_shape x num_points M`-dim Tensor containing the objective
                 vectors.
             weights: A `batch_shape x num_weights x M`-dim Tensor of weights.
             ref_points: A `batch_shape x num_ref x M`-dim Tensor containing the
                 reference points.
-            invert: If True, the reference point is assumed to be the nadir, else we
-                assume it is the utopia.
+            invert: If True, the residual is defined as the difference from the
+                reference point `y-r`, else the residual is defined as the difference
+                towards the reference point `r-y`, where `y` is an objective vector
+                and `r` is a reference point.
             pseudo: If True, then we compute the pseudo Chebyshev scalarization
                 function, which uses the minimum instead of the maximum.
             clip: If True, we clip the distance at zero.
+            negate: If True, we negate the distance.
 
         Returns:
             A `batch_shape x num_points x num_weights x num_ref`-dim Tensor
                 containing the scalarized objective vectors.
         """
-        sign = 1.0 if invert else -1.0
+        sign = -1.0 if negate else 1.0
+        diff_sign = -1.0 if invert else 1.0
+
         # `num_points x batch_shape x 1 x M`
         reshaped_Y = Y.movedim(-2, 0).unsqueeze(-2)
         # `num_points x batch_shape x 1 x num_ref x M`
-        diff = sign * (reshaped_Y - ref_points).unsqueeze(-3)
+        diff = diff_sign * (ref_points - reshaped_Y).unsqueeze(-3)
 
         if clip:
             diff = torch.clamp(diff, min=0)
 
-        # `num_points x batch_shape x num_weights x num_ref`
-        if invert:
-            if pseudo:
-                scalarized_Y = torch.min(weights.unsqueeze(-2) * diff, dim=-1).values
-            else:
-                scalarized_Y = torch.max(weights.unsqueeze(-2) * diff, dim=-1).values
-        else:
-            if pseudo:
-                scalarized_Y = -torch.min(weights.unsqueeze(-2) * diff, dim=-1).values
-            else:
-                scalarized_Y = -torch.max(weights.unsqueeze(-2) * diff, dim=-1).values
+        # `batch_shape x num_points x num_weights x num_ref x M`
+        weighted_diff = (weights.unsqueeze(-2) * diff).movedim(0, -4)
 
         # `batch_shape x num_points x num_weights x num_ref`
-        return scalarized_Y.movedim(0, -3)
+        if pseudo:
+            scalarized_Y = torch.min(weighted_diff, dim=-1).values
+        else:
+            scalarized_Y = torch.max(weighted_diff, dim=-1).values
+
+        # `batch_shape x num_points x num_weights x num_ref`
+        return sign * scalarized_Y
 
     def forward(self, Y: Tensor) -> Tensor:
-        r"""Computes the Chebyshev scalarization.
+        r"""Computes the Chebyshev scalarization or one of its variants.
 
         Args:
             Y: An `batch_shape x num_points x M`-dim Tensor containing the objective
@@ -385,6 +366,7 @@ class ChebyshevScalarization(ScalarizationFunction):
             invert=self.invert,
             pseudo=self.pseudo,
             clip=self.clip,
+            negate=self.negate,
         )
 
 
@@ -396,6 +378,7 @@ class LengthScalarization(ScalarizationFunction):
         self,
         weights: Tensor,
         ref_points: Tensor,
+        invert: bool = True,
         clip: bool = True,
     ) -> None:
         r"""Length scalarization function.
@@ -404,12 +387,17 @@ class LengthScalarization(ScalarizationFunction):
             weights: A `batch_shape x num_weights x M`-dim Tensor of weights.
             ref_points: A `batch_shape x num_ref x M`-dim Tensor containing the
                 reference points.
+            invert: If True, the residual is defined as the difference from the
+                reference point `y-r`, else the residual is defined as the difference
+                towards the reference point `r-y`, where `y` is an objective vector
+                and `r` is a reference point.
             clip: If True, we clamp the length at zero.
         """
         super().__init__()
 
         self.weights = weights
         self.ref_points = ref_points
+        self.invert = invert
         self.clip = clip
 
     @staticmethod
@@ -417,14 +405,20 @@ class LengthScalarization(ScalarizationFunction):
         Y: Tensor,
         weights: Tensor,
         ref_points: Tensor,
+        invert: bool = True,
         clip: bool = True,
     ) -> Tensor:
         r"""Computes the length scalarization.
 
-            If `clip=True`:
-                s(Y) = min(max(0, (Y - r) / w))
+            If `invert=False`:
+                residual = r - Y
             Else:
-                s(Y) = min((Y - r) / w)
+                residual = Y - r
+
+            If `clip = True`:
+                residual = max(residual, 0)
+
+            s(Y) = min(residual / w)
 
         Args:
             Y: An `batch_shape x num_points x M`-dim Tensor containing the objective
@@ -432,20 +426,25 @@ class LengthScalarization(ScalarizationFunction):
             weights: A `batch_shape x num_weights x M`-dim Tensor of weights.
             ref_points: A `batch_shape x num_ref x M`-dim Tensor containing the
                 reference points.
+            invert: If True, the residual is defined as the difference from the
+                reference point `y-r`, else the residual is defined as the difference
+                towards the reference point `r-y`, where `y` is an objective vector
+                and `r` is a reference point.
             clip: If True, we clamp the length at zero.
 
         Returns:
             A `batch_shape x num_points x num_weights x num_ref`-dim Tensor
                 containing the scalarized objective vectors.
         """
-
+        # TODO: need to be careful about dividing by zero?
         scalarized_Y = ChebyshevScalarization.evaluate(
             Y=Y,
             weights=1 / weights,
             ref_points=ref_points,
-            invert=True,
+            invert=invert,
             pseudo=True,
             clip=clip,
+            negate=False,
         )
 
         # `batch_shape x num_points x num_weights x num_ref`
@@ -466,6 +465,7 @@ class LengthScalarization(ScalarizationFunction):
             Y=Y,
             weights=self.weights,
             ref_points=self.ref_points,
+            invert=self.invert,
             clip=self.clip,
         )
 
@@ -475,10 +475,11 @@ class HypervolumeScalarization(ScalarizationFunction):
     num_params = 2
 
     def __init__(
-            self,
-            weights: Tensor,
-            ref_points: Tensor,
-            clip: bool = True
+        self,
+        weights: Tensor,
+        ref_points: Tensor,
+        invert: bool = True,
+        clip: bool = True,
     ) -> None:
         r"""Hypervolume scalarization function.
 
@@ -486,31 +487,41 @@ class HypervolumeScalarization(ScalarizationFunction):
             weights: A `batch_shape x num_weights x M`-dim Tensor of weights.
             ref_points: A `batch_shape x num_ref x M`-dim Tensor containing the
                 reference points.
+            invert: If True, the residual is defined as `y-r`, else the residual is
+                defined as `r-y`, where `y` is an objective vector and `r` is
+                a reference point.
             clip: If True, we clamp the values at zero.
         """
         super().__init__()
 
         self.weights = weights
         self.ref_points = ref_points
+        self.invert = invert
         self.clip = clip
 
     @staticmethod
     def evaluate(
-            Y: Tensor,
-            weights: Tensor,
-            ref_points: Tensor,
-            clip: bool = True,
+        Y: Tensor,
+        weights: Tensor,
+        ref_points: Tensor,
+        invert: bool = True,
+        clip: bool = True,
     ) -> Tensor:
         r"""Computes the hypervolume scalarization.
 
             c = π^(M/2) / (2^M Γ(M/2 + 1))
 
-            If `clip=True`:
-                s(Y) = c g(min(max(0, (Y - r) / w)), M)
+            If `invert=False`:
+                residual = r - Y
             Else:
-                s(Y) = c g(min((Y - r) / w)), M)
+                residual = Y - r
 
-            where g(z, M) = sign(z) * abs(z)^M
+            If `clip = True`:
+                residual = max(residual, 0)
+
+            s(Y) = c g(min(residual / w))
+
+            where g(z, M) = sign(z) * abs(z)^M.
 
         Args:
             Y: An `batch_shape x num_points x M`-dim Tensor containing the objective
@@ -518,6 +529,10 @@ class HypervolumeScalarization(ScalarizationFunction):
             weights: A `batch_shape x num_weights x M`-dim Tensor of weights.
             ref_points: A `batch_shape x num_ref x M`-dim Tensor containing the
                 reference points.
+            invert: If True, the residual is defined as the difference from the
+                reference point `y-r`, else the residual is defined as the difference
+                towards the reference point `r-y`, where `y` is an objective vector
+                and `r` is a reference point.
             clip: If True, we clamp the values at zero.
 
         Returns:
@@ -525,17 +540,16 @@ class HypervolumeScalarization(ScalarizationFunction):
                 containing the scalarized objective vectors.
         """
         length = LengthScalarization.evaluate(
-            Y=Y, weights=weights, ref_points=ref_points, clip=clip
+            Y=Y, weights=weights, ref_points=ref_points, invert=invert, clip=clip
         )
         M = weights.shape[-1]
-        # We multiple the constant before taking the power for numerical stability.
+        # We multiply the constant before taking the power for numerical stability.
         constant = pi ** (1 / 2) / (2 * gamma(M / 2 + 1) ** (1 / M))
-        
+
         if clip:
             return torch.pow(constant * length, M)
         else:
             return torch.sign(length) * torch.pow(constant * abs(length), M)
-        
 
     def forward(self, Y: Tensor) -> Tensor:
         r"""Computes the hypervolume scalarization.
@@ -552,6 +566,7 @@ class HypervolumeScalarization(ScalarizationFunction):
             Y=Y,
             weights=self.weights,
             ref_points=self.ref_points,
+            invert=self.invert,
             clip=self.clip,
         )
 
@@ -567,6 +582,7 @@ class AugmentedChebyshevScalarization(ScalarizationFunction):
         beta: float = 5e-2,
         invert: bool = False,
         pseudo: bool = False,
+        negate: bool = True,
     ) -> None:
         r"""Augmented Chebyshev scalarization function.
 
@@ -579,6 +595,7 @@ class AugmentedChebyshevScalarization(ScalarizationFunction):
                 with respect to the utopia.
             pseudo: If True, we compute the pseudo Chebyshev scalarization
                 function, which uses the minimum instead of the maximum.
+            negate: If True, we negate the distance.
         """
         super().__init__()
 
@@ -587,6 +604,7 @@ class AugmentedChebyshevScalarization(ScalarizationFunction):
         self.beta = beta
         self.invert = invert
         self.pseudo = pseudo
+        self.negate = negate
 
     @staticmethod
     def evaluate(
@@ -596,20 +614,24 @@ class AugmentedChebyshevScalarization(ScalarizationFunction):
         beta: float = 5e-2,
         invert: bool = False,
         pseudo: bool = False,
+        negate: bool = True,
     ) -> Tensor:
-        r"""Computes the augmented Chebyshev scalarization.
+        r"""Computes the augmented Chebyshev scalarization or one of its variants.
 
-            If `invert=False` and `pseudo=True`:
-                s(Y) = - min(w * (r - Y)) - beta * sum(w * (r - Y))
+            If `invert=False`:
+                residual = r - Y
+            Else:
+                residual = Y - r
 
-            If `invert=False` and `pseudo=False`:
-                s(Y) = - max(w * (r - Y)) - beta * sum(w * (r - Y))
+            If `negate=False`:
+                sign = 1
+            Else:
+                sign = -1
 
-            If `invert=True` and `pseudo=True`:
-                s(Y) = min(w * (Y - r)) + beta * sum(w * (Y - r))
-
-            If `invert=True` and `pseudo=False`:
-                s(Y) = max(w * (Y - r)) + beta * sum(w * (Y - r))
+            If `pseudo=False`:
+                s(Y) = sign * max(w * residual) + sign * beta * sum(w * residual)
+            Else:
+                s(Y) = sign * min(w * residual) + sign * beta * sum(w * residual)
 
         Args:
             Y: An `batch_shape x num_points x M`-dim Tensor containing the objective
@@ -620,29 +642,37 @@ class AugmentedChebyshevScalarization(ScalarizationFunction):
             beta: The trade-off parameter controlling the L1 penalty.
             invert: If True we compute with respect to the nadir, else we compute
                 with respect to the utopia.
-            pseudo: If True, we compute the pseudo Chebyshev scalarization
-                function, which uses the minimum instead of the maximum.
+            pseudo: If True, we compute the pseudo Chebyshev scalarization function,
+                which uses the minimum instead of the maximum.
+            negate: If True, we negate the distance.
 
         Returns:
             A `batch_shape x num_points x num_weights x num_ref`-dim Tensor
                 containing the scalarized objective vectors.
         """
-        penalty = beta * LinearScalarization.evaluate(
-            Y=Y, weights=weights, ref_points=ref_points, invert=invert, clip=False
-        )
-        objective = ChebyshevScalarization.evaluate(
-            Y=Y,
-            weights=weights,
-            ref_points=ref_points,
-            invert=invert,
-            pseudo=pseudo,
-            clip=False,
-        )
+        sign = -1.0 if negate else 1.0
+        diff_sign = -1.0 if invert else 1.0
 
-        return objective + penalty
+        # `num_points x batch_shape x 1 x M`
+        reshaped_Y = Y.movedim(-2, 0).unsqueeze(-2)
+        # `num_points x batch_shape x 1 x num_ref x M`
+        diff = diff_sign * (ref_points - reshaped_Y).unsqueeze(-3)
+        # `batch_shape x num_points x num_weights x num_ref x M`
+        weighted_diff = (weights.unsqueeze(-2) * diff).movedim(0, -4)
+        # `num_points x batch_shape x num_weights x num_ref`
+        penalty = torch.sum(weighted_diff, dim=-1)
+
+        # `batch_shape x num_points x num_weights x num_ref`
+        if pseudo:
+            scalarized_Y = torch.min(weighted_diff, dim=-1).values + beta * penalty
+        else:
+            scalarized_Y = torch.max(weighted_diff, dim=-1).values + beta * penalty
+
+        # `batch_shape x num_points x num_weights x num_ref`
+        return sign * scalarized_Y
 
     def forward(self, Y: Tensor) -> Tensor:
-        r"""Computes the augmented Chebyshev scalarization.
+        r"""Computes the augmented Chebyshev scalarization or one of its variants.
 
         Args:
             Y: An `batch_shape x num_points x M`-dim Tensor containing the objective
@@ -659,6 +689,7 @@ class AugmentedChebyshevScalarization(ScalarizationFunction):
             beta=self.beta,
             invert=self.invert,
             pseudo=self.pseudo,
+            negate=self.negate,
         )
 
 
@@ -673,6 +704,7 @@ class ModifiedChebyshevScalarization(ScalarizationFunction):
         beta: float = 5e-2,
         invert: bool = False,
         pseudo: bool = False,
+        negate: bool = True,
     ) -> None:
         r"""Modified Chebyshev scalarization function.
 
@@ -685,6 +717,7 @@ class ModifiedChebyshevScalarization(ScalarizationFunction):
                 with respect to the utopia.
             pseudo: If True, we compute the pseudo Chebyshev scalarization
                 function, which uses the minimum instead of the maximum.
+            negate: If True, we negate the distance.
         """
         super().__init__()
 
@@ -693,6 +726,7 @@ class ModifiedChebyshevScalarization(ScalarizationFunction):
         self.beta = beta
         self.invert = invert
         self.pseudo = pseudo
+        self.negate = negate
 
     @staticmethod
     def evaluate(
@@ -702,20 +736,25 @@ class ModifiedChebyshevScalarization(ScalarizationFunction):
         beta: float = 5e-2,
         invert: bool = False,
         pseudo: bool = False,
+        negate: bool = True,
     ) -> Tensor:
-        r"""Computes the modified Chebyshev scalarization function.
+        r"""Computes the modified Chebyshev scalarization function or one of its
+        variants.
 
-            If `invert=False` and `pseudo=True`:
-                s(Y) = - min(w * (r - Y) - beta * sum(w * (r - Y)))
+            If `invert=False`:
+                residual = r - Y
+            Else:
+                residual = Y - r
 
-            If `invert=False` and `pseudo=False`:
-                s(Y) = - max(w * (r - Y) - beta * sum(w * (r - Y)))
+            If `negate=False`:
+                sign = 1
+            Else:
+                sign = -1
 
-            If `invert=True` and `pseudo=True`:
-                s(Y) = min(w * (Y - r) + beta * sum(w * (Y - r)))
-
-            If `invert=True` and `pseudo=False`:
-                s(Y) = max(w * (Y - r) + beta * sum(w * (Y - r)))
+            If `pseudo=False`:
+                s(Y) = sign * max(w * residual + sign * beta * sum(w * residual))
+            Else:
+                s(Y) = sign * min(w * residual + sign * beta * sum(w * residual))
 
         Args:
             Y: An `batch_shape x num_points x M`-dim Tensor containing the objective
@@ -728,37 +767,29 @@ class ModifiedChebyshevScalarization(ScalarizationFunction):
                 with respect to the utopia.
             pseudo: If True, we compute the pseudo Chebyshev scalarization
                 function, which uses the minimum instead of the maximum.
+            negate: If True, we negate the distance.
 
         Returns:
             A `batch_shape x num_points x num_weights x num_ref`-dim Tensor
                 containing the scalarized objective vectors.
         """
-
-        # `batch_shape x num_points x num_weights x num_ref`
-        penalty = LinearScalarization.evaluate(
-            Y=Y, weights=weights, ref_points=ref_points, invert=invert, clip=False
-        )
-
-        sign = 1.0 if invert else -1.0
+        sign = -1.0 if negate else 1.0
+        diff_sign = 1.0 if invert else -1.0
         # `num_points x batch_shape x 1 x M`
         reshaped_Y = Y.movedim(-2, 0).unsqueeze(-2)
         # `num_points x batch_shape x 1 x num_ref x M`
-        diff = sign * (reshaped_Y - ref_points).unsqueeze(-3)
+        diff = diff_sign * (reshaped_Y - ref_points).unsqueeze(-3)
         # `batch_shape x num_points x num_weights x num_ref x M`
-        weighted_obj = (weights.unsqueeze(-2) * diff).movedim(0, -4)
-        beta_times_penalty = beta * penalty.unsqueeze(-1)
+        weighted_diff = (weights.unsqueeze(-2) * diff).movedim(0, -4)
+        penalty = sign * torch.sum(weighted_diff, dim=-1, keepdims=True)
 
         # `batch_shape x num_points x num_weights x num_ref`
-        if invert:
-            if pseudo:
-                return torch.min(weighted_obj + beta_times_penalty, dim=-1).values
-            else:
-                return torch.max(weighted_obj + beta_times_penalty, dim=-1).values
+        if pseudo:
+            scalarized_Y = torch.min(weighted_diff + beta * penalty, dim=-1).values
         else:
-            if pseudo:
-                return -torch.min(weighted_obj - beta_times_penalty, dim=-1).values
-            else:
-                return -torch.max(weighted_obj - beta_times_penalty, dim=-1).values
+            scalarized_Y = torch.max(weighted_diff + beta * penalty, dim=-1).values
+
+        return sign * scalarized_Y
 
     def forward(self, Y: Tensor) -> Tensor:
         r"""Computes the modified Chebyshev scalarization function.
@@ -778,11 +809,12 @@ class ModifiedChebyshevScalarization(ScalarizationFunction):
             beta=self.beta,
             invert=self.invert,
             pseudo=self.pseudo,
+            negate=self.negate,
         )
 
 
 class PBIScalarization(ScalarizationFunction):
-    r"""Penalty Boundary Intersection scalarization function."""
+    r"""Penalty boundary intersection scalarization function."""
     num_params = 2
 
     def __init__(
@@ -791,16 +823,20 @@ class PBIScalarization(ScalarizationFunction):
         ref_points: Tensor,
         beta: float = 5,
         invert: bool = False,
+        negate: bool = True,
     ) -> None:
-        r"""Penalty Boundary Intersection scalarization function.
+        r"""Penalty boundary intersection scalarization function.
 
         Args:
             weights: A `batch_shape x num_weights x M`-dim Tensor of weights.
             ref_points: A `batch_shape x num_ref x M`-dim Tensor containing the
                 reference points.
             beta: The trade-off parameter controlling the diversity penalty.
-            invert: If True we compute with respect to the nadir, else we compute
-                with respect to the utopia.
+            invert: If True, the residual is defined as the difference from the
+                reference point `y-r`, else the residual is defined as the difference
+                towards the reference point `r-y`, where `y` is an objective vector
+                and `r` is a reference point.
+            negate: If True, we negate the convergence term.
         """
         super().__init__()
 
@@ -808,6 +844,7 @@ class PBIScalarization(ScalarizationFunction):
         self.ref_points = ref_points
         self.beta = beta
         self.invert = invert
+        self.negate = negate
 
     @staticmethod
     def evaluate(
@@ -816,19 +853,31 @@ class PBIScalarization(ScalarizationFunction):
         ref_points: Tensor,
         beta: float = 5,
         invert: bool = False,
+        negate: bool = True,
     ) -> Tensor:
         r"""Computes the penalty boundary intersection scalarization or inverted
         penalty boundary intersection scalarization.
 
             If `invert=False`:
-                d1(Y) = - |sum(w * (r - Y))|
-                d2(Y) = sum(|Y - (r - d1(Y)w)|^2)^(1/2)
-                s(Y) = - d1(Y) - beta * d2(Y)
+                residual = r - Y
+            Else:
+                residual = Y - r
 
-            If `invert=True`:
-                d1(Y) = - |sum(w * (Y - r))|
-                d2(Y) = sum(|Y - (r + d1(Y)w)|^2)^(1/2)
-                s(Y) = d1(Y) - beta * d2(Y)
+            If `negate=False`:
+                sign = 1
+            Else:
+                sign = -1
+
+            convergence(Y) = |sum(w * residual)|
+            diversity(Y) = ||residual + convergence(Y)w||_2
+
+            s(Y) = sign * convergence(Y) - beta * diversity(Y)
+
+            The sign of the convergence term depends on the optimization problem
+            and the choice of reference point. For a maximization problem, the
+            standard PBI uses the utopia reference point and sets `invert=False` and
+            `negate=False`. Whereas, the standard inverted PBI uses the nadir
+            reference point and sets `invert=True` and `negate=True`.
 
         Args:
             Y: An `batch_shape x num_points x M`-dim Tensor containing the objective
@@ -839,33 +888,36 @@ class PBIScalarization(ScalarizationFunction):
             beta: The trade-off parameter controlling the diversity penalty.
             invert: If True we compute with respect to the nadir, else we compute
                 with respect to the utopia.
+            negate: If True, we negate the convergence term.
 
         Returns:
             A `batch_shape x num_points x num_weights x num_ref`-dim Tensor
                 containing the scalarized objectives.
         """
-        sign = 1.0 if invert else -1.0
+        sign = -1.0 if negate else 1.0
+        diff_sign = -1.0 if invert else 1.0
         # `num_points x batch_shape x 1 x M`
         reshaped_Y = Y.movedim(-2, 0).unsqueeze(-2)
         # `num_points x batch_shape x 1 x num_ref x M`
-        diff = sign * (reshaped_Y - ref_points).unsqueeze(-3)
+        diff = diff_sign * (ref_points - reshaped_Y).unsqueeze(-3)
         # `num_points x batch_shape x num_weights x num_ref`
-        d1 = torch.abs(torch.sum(weights.unsqueeze(-2) * diff, dim=-1))
+        convergence = torch.abs(torch.sum(weights.unsqueeze(-2) * diff, dim=-1))
+        # `num_points x batch_shape x num_weights x num_ref x M`
+        point = ref_points.unsqueeze(-3) + sign * convergence.unsqueeze(
+            -1
+        ) * weights.unsqueeze(-2)
 
         # `num_points x batch_shape x num_weights x num_ref x M`
-        point = ref_points + sign * d1.unsqueeze(-1) * weights.unsqueeze(-2)
-
-        # `num_points x batch_shape x num_weights x num_ref x M`
-        diff_2 = reshaped_Y.unsqueeze(-2) - point
+        projected_diff = reshaped_Y.unsqueeze(-2) - point
 
         # `num_points x batch_shape x num_weights x num_ref`
-        d2 = torch.norm(diff_2, p=2, dim=-1)
-
-        # `num_points x batch_shape x num_weights x num_ref`
-        sY = sign * d1 - beta * d2
+        diversity = torch.norm(projected_diff, p=2, dim=-1)
 
         # `batch_shape x num_points x num_weights x num_ref`
-        return sY.movedim(0, -3)
+        scalarized_Y = (sign * convergence - beta * diversity).movedim(0, -3)
+
+        # `batch_shape x num_points x num_weights x num_ref`
+        return scalarized_Y
 
     def forward(self, Y: Tensor) -> Tensor:
         r"""Computes the penalty boundary intersection scalarization or inverted
@@ -885,6 +937,7 @@ class PBIScalarization(ScalarizationFunction):
             ref_points=self.ref_points,
             beta=self.beta,
             invert=self.invert,
+            negate=self.negate,
         )
 
 
@@ -896,54 +949,62 @@ class KSScalarization(ScalarizationFunction):
         self,
         utopia_points: Tensor,
         nadir_points: Tensor,
+        maximize: bool = True,
     ) -> None:
         r"""Kalai-Smorodinsky scalarization.
 
         Args:
             utopia_points: A `batch_shape x num_ref x M`-dim Tensor containing the
-                utopia points.
+                utopia points, which are the best possible points.
             nadir_points: A `batch_shape x num_ref x M`-dim Tensor containing the
-                nadir points.
+                nadir points, which are the worst possible points.
+            maximize: If True, we consider the maximization problem.
         """
         super().__init__()
 
         self.utopia_points = utopia_points
         self.nadir_points = nadir_points
+        self.maximize = maximize
 
     @staticmethod
     def evaluate(
         Y: Tensor,
         utopia_points: Tensor,
         nadir_points: Tensor,
+        maximize: bool = True,
     ) -> Tensor:
         r"""Computes the Kalai-Smorodinsky scalarization.
 
-            If `invert=False`:
+            If `maximize=True`:
                 s(Y) = min((y - nadir) / (utopia - nadir))
+            Else:
+                s(Y) = min((nadir - y) / (nadir - utopia))
 
         Args:
             Y: An `batch_shape x num_points x M`-dim Tensor containing the objective
-                vectors.
+                vectors, which are the best possible points.
             utopia_points: A `batch_shape x num_ref x M`-dim Tensor containing the
                 utopia points.
             nadir_points: A `batch_shape x num_ref x M`-dim Tensor containing the
-                nadir points.
+                nadir points, which are the worst possible points.
+            maximize: If True, we consider the maximization problem.
 
         Returns:
-            A `batch_shape x num_ref`-dim Tensor containing the scalarized
-                objectives.
+            A `batch_shape x num_ref`-dim Tensor containing the scalarized objectives.
         """
+        sign = 1.0 if maximize else -1.0
 
         # `num_points x batch_shape x num_ref x M`
-        obj_range = utopia_points - nadir_points
+        obj_range = sign * (utopia_points - nadir_points)
 
         # `num_points x batch_shape x num_ref x num_ref`
         sY = ChebyshevScalarization.evaluate(
             Y=Y,
             weights=1 / obj_range,
             ref_points=nadir_points,
-            invert=True,
+            invert=maximize,
             pseudo=True,
+            negate=False,
         )
 
         return sY[..., 0]
@@ -960,6 +1021,8 @@ class KSScalarization(ScalarizationFunction):
                 scalarized objectives.
         """
         return self.evaluate(
-            Y=Y, utopia_points=self.utopia_points, nadir_points=self.nadir_points
+            Y=Y,
+            utopia_points=self.utopia_points,
+            nadir_points=self.nadir_points,
+            maximize=self.maximize,
         )
-
