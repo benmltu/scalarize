@@ -1028,7 +1028,6 @@ class KSScalarization(LengthScalarization):
         self,
         utopia_points: Tensor,
         nadir_points: Tensor,
-        maximize: bool = True,
     ) -> None:
         r"""Kalai-Smorodinsky scalarization function.
 
@@ -1037,60 +1036,49 @@ class KSScalarization(LengthScalarization):
                 utopia points, which are the best possible points.
             nadir_points: A `batch_shape x num_ref x M`-dim Tensor containing the
                 nadir points, which are the worst possible points.
-            maximize: If True, we consider the maximization problem.
         """
-        sign = 1.0 if maximize else -1.0
-        # `num_points x batch_shape x num_ref x M`
-        obj_range = sign * (utopia_points - nadir_points)
 
         super().__init__(
-            weights=obj_range,
+            weights=utopia_points - nadir_points,
             ref_points=nadir_points,
-            invert=maximize,
+            invert=True,
             clip=False,
         )
 
         self.utopia_points = utopia_points
         self.nadir_points = nadir_points
-        self.maximize = maximize
 
     @staticmethod
     def evaluate(
         Y: Tensor,
         utopia_points: Tensor,
         nadir_points: Tensor,
-        maximize: bool = True,
     ) -> Tensor:
         r"""Computes the Kalai-Smorodinsky scalarization function.
 
-            If `maximize=True`:
-                s(Y) = min((y - nadir) / (utopia - nadir))
-            Else:
-                s(Y) = min((nadir - y) / (nadir - utopia))
+            s(Y) = min((y - nadir) / (utopia - nadir))
+                 = min((nadir - y) / (nadir - utopia))
+
+        This scalarization function can be used for both minimization and
+        maximization problems as long as the reference points are set accordingly.
 
         Args:
             Y: An `batch_shape x num_points x M`-dim Tensor containing the objective
-                vectors, which are the best possible points.
+                vectors.
             utopia_points: A `batch_shape x num_ref x M`-dim Tensor containing the
-                utopia points.
+                utopia points, which are the best possible points.
             nadir_points: A `batch_shape x num_ref x M`-dim Tensor containing the
                 nadir points, which are the worst possible points.
-            maximize: If True, we consider the maximization problem.
 
         Returns:
             A `batch_shape x num_ref`-dim Tensor containing the scalarized objectives.
         """
-        sign = 1.0 if maximize else -1.0
-
-        # `num_points x batch_shape x num_ref x M`
-        obj_range = sign * (utopia_points - nadir_points)
-
         # `num_points x batch_shape x num_ref`
         return LengthScalarization.evaluate(
             Y=Y,
-            weights=obj_range,
+            weights=utopia_points - nadir_points,
             ref_points=nadir_points,
-            invert=maximize,
+            invert=True,
             clip=False,
         ).diagonal(dim1=-2, dim2=-1)
 
@@ -1109,5 +1097,4 @@ class KSScalarization(LengthScalarization):
             Y=Y,
             utopia_points=self.utopia_points,
             nadir_points=self.nadir_points,
-            maximize=self.maximize,
         )
