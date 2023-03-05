@@ -741,9 +741,9 @@ class AugmentedChebyshevScalarization(ChebyshevScalarization):
 
         # `batch_shape x num_points x num_weights x num_ref`
         if pseudo:
-            return sign * torch.min(weighted_diff, dim=-1).values + beta * penalty
+            return sign * (torch.min(weighted_diff, dim=-1).values + beta * penalty)
         else:
-            return sign * torch.max(weighted_diff, dim=-1).values + beta * penalty
+            return sign * (torch.max(weighted_diff, dim=-1).values + beta * penalty)
 
     def forward(self, Y: Tensor) -> Tensor:
         r"""Computes the augmented Chebyshev scalarization or one of its variants.
