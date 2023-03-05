@@ -16,13 +16,14 @@ from torch.nn import Module
 
 
 class ScalarizationParameterTransform(Module, ABC):
+    r"""Abstract base class for scalarization parameter transformations."""
 
     parameter_dim: int
     latent_dim: int
     bounds: List[Tuple[float, float]]
 
     def __init__(self, num_objectives: int, **kwargs) -> None:
-        r"""Base constructor for scalarization parameter.
+        r"""Base constructor for scalarization parameter transformations.
 
         Args:
             num_objectives: The number of objectives.
