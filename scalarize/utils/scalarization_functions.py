@@ -591,7 +591,7 @@ class HypervolumeScalarization(LengthScalarization):
             If `clip = True`:
                 residual = max(residual, 0)
 
-            s(Y) = c g(min(residual / w))
+            s(Y) = c g(min(residual / w), M)
 
             where g(z, M) = sign(z) * abs(z)^M.
 
@@ -705,9 +705,9 @@ class AugmentedChebyshevScalarization(ChebyshevScalarization):
                 sign = -1
 
             If `pseudo=False`:
-                s(Y) = sign * max(w * residual) + sign * beta * sum(w * residual)
+                s(Y) = sign * (max(w * residual) + beta * sum(w * residual))
             Else:
-                s(Y) = sign * min(w * residual) + sign * beta * sum(w * residual)
+                s(Y) = sign * (min(w * residual) + beta * sum(w * residual))
 
         Args:
             Y: An `batch_shape x num_points x M`-dim Tensor containing the objective
