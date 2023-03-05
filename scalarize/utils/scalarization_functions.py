@@ -439,7 +439,7 @@ class ChebyshevScalarization(ResidualBasedScalarizationFunction):
         )
 
 
-class LengthScalarization(ResidualBasedScalarizationFunction):
+class LengthScalarization(ChebyshevScalarization):
     r"""Length scalarization function."""
     num_params = 2
 
@@ -463,11 +463,14 @@ class LengthScalarization(ResidualBasedScalarizationFunction):
                 and `r` is a reference point.
             clip: If True, we clamp the length at zero.
         """
+        # Note that we store weights, but actually use 1 / weights in evaluation.
         super().__init__(
             weights=weights,
             ref_points=ref_points,
             invert=invert,
+            pseudo=True,
             clip=clip,
+            negate=False,
         )
 
     @staticmethod
@@ -538,7 +541,7 @@ class LengthScalarization(ResidualBasedScalarizationFunction):
         )
 
 
-class HypervolumeScalarization(ResidualBasedScalarizationFunction):
+class HypervolumeScalarization(LengthScalarization):
     r"""Hypervolume scalarization function."""
     num_params = 2
 
