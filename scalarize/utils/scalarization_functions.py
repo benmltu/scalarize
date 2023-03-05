@@ -125,19 +125,14 @@ class ResidualBasedScalarizationFunction(ScalarizationFunction, ABC):
                 containing the weighted residuals.
         """
         sign = -1.0 if invert else 1.0
-        # `num_points x batch_shape x 1 x M`
-        reshaped_Y = Y.movedim(-2, 0).unsqueeze(-2)
-
-        # `num_points x batch_shape x 1 x num_ref x M`
-        diff = sign * (ref_points - reshaped_Y).unsqueeze(-3)
+        # `batch_shape x num_points x num_ref x M`
+        diff = sign * (ref_points.unsqueeze(-3) - Y.unsqueeze(-2))
 
         if clip:
             diff = torch.clamp(diff, min=0)
 
         # `batch_shape x num_points x num_weights x num_ref x M`
-        weighted_diff = (weights.unsqueeze(-2) * diff).movedim(0, -4)
-
-        return weighted_diff
+        return weights.unsqueeze(-2).unsqueeze(-4) * diff.unsqueeze(-3)
 
 
 class LinearScalarization(ScalarizationFunction):
