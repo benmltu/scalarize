@@ -1020,8 +1020,8 @@ class PBIScalarization(ResidualBasedScalarizationFunction):
         )
 
 
-class KSScalarization(ChebyshevScalarization):
-    r"""Kalai-Smorodinsky scalarization."""
+class KSScalarization(LengthScalarization):
+    r"""Kalai-Smorodinsky scalarization function."""
     num_params = 1
 
     def __init__(
@@ -1030,7 +1030,7 @@ class KSScalarization(ChebyshevScalarization):
         nadir_points: Tensor,
         maximize: bool = True,
     ) -> None:
-        r"""Kalai-Smorodinsky scalarization.
+        r"""Kalai-Smorodinsky scalarization function.
 
         Args:
             utopia_points: A `batch_shape x num_ref x M`-dim Tensor containing the
@@ -1044,12 +1044,10 @@ class KSScalarization(ChebyshevScalarization):
         obj_range = sign * (utopia_points - nadir_points)
 
         super().__init__(
-            weights=1 / obj_range,
+            weights=obj_range,
             ref_points=nadir_points,
             invert=maximize,
             clip=False,
-            pseudo=True,
-            negate=False,
         )
 
         self.utopia_points = utopia_points
@@ -1063,7 +1061,7 @@ class KSScalarization(ChebyshevScalarization):
         nadir_points: Tensor,
         maximize: bool = True,
     ) -> Tensor:
-        r"""Computes the Kalai-Smorodinsky scalarization.
+        r"""Computes the Kalai-Smorodinsky scalarization function.
 
             If `maximize=True`:
                 s(Y) = min((y - nadir) / (utopia - nadir))
@@ -1088,17 +1086,16 @@ class KSScalarization(ChebyshevScalarization):
         obj_range = sign * (utopia_points - nadir_points)
 
         # `num_points x batch_shape x num_ref`
-        return ChebyshevScalarization.evaluate(
+        return LengthScalarization.evaluate(
             Y=Y,
-            weights=1 / obj_range,
+            weights=obj_range,
             ref_points=nadir_points,
             invert=maximize,
-            pseudo=True,
-            negate=False,
-        )[..., 0]
+            clip=False,
+        ).diagonal(dim1=-2, dim2=-1)
 
     def forward(self, Y: Tensor) -> Tensor:
-        r"""Computes the Kalai-Smorodinsky scalarization.
+        r"""Computes the Kalai-Smorodinsky scalarization function.
 
         Args:
             Y: An `batch_shape x num_points x M`-dim Tensor containing the objective
