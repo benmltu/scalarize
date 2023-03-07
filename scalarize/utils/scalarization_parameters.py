@@ -380,10 +380,6 @@ class OrderedUniform(ScalarizationParameterTransform):
         Else,
             flip the result.
 
-
-        Note this is faster than the exponential spacing method for small number of
-        objectives. It is however slower for larger number of objectives.
-
         Args:
             X: A `batch_shape x (num_objectives + 1)`-dim Tensor containing the
                 latent scalarization parameters.
