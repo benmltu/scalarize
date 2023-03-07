@@ -37,7 +37,7 @@ class ScalarizationParameterTransform(Module, ABC):
         parameter.
 
         Args:
-            X: An `batch_shape x latent_dim`-dim Tensor containing the latent
+            X: A `batch_shape x latent_dim`-dim Tensor containing the latent
                 scalarization parameters.
 
         Returns:
@@ -82,7 +82,7 @@ class SimplexWeight(ScalarizationParameterTransform):
         `transform(X) = X / sum(X)`.
 
         Args:
-            X: An `batch_shape x num_objectives`-dim Tensor containing the latent
+            X: A `batch_shape x num_objectives`-dim Tensor containing the latent
                 scalarization parameters.
 
         Returns:
@@ -108,11 +108,11 @@ class SimplexWeight(ScalarizationParameterTransform):
         computations are performed iteratively.
 
         Args:
-            X: An `batch_shape x (num_objectives-1)`-dim Tensor containing the latent
+            X: A `batch_shape x (num_objectives-1)`-dim Tensor containing the latent
                 scalarization parameters.
 
         Returns:
-            transformed_X: An `batch_shape x num_objectives`-dim Tensor containing
+            transformed_X: A `batch_shape x num_objectives`-dim Tensor containing
                 the scalarization parameters.
         """
         tkwargs = {"dtype": X.dtype, "device": X.device}
@@ -140,11 +140,11 @@ class SimplexWeight(ScalarizationParameterTransform):
         `transform(X) = -log(X) / sum(-log(X))`.
 
         Args:
-            X: An `batch_shape x num_objectives`-dim Tensor containing the latent
+            X: A `batch_shape x num_objectives`-dim Tensor containing the latent
                 scalarization parameters.
 
         Returns:
-            transformed_X: An `batch_shape x num_objectives`-dim Tensor containing
+            transformed_X: A `batch_shape x num_objectives`-dim Tensor containing
                 the scalarization parameters.
         """
         # add eps to avoid torch.log(0)
@@ -156,11 +156,11 @@ class SimplexWeight(ScalarizationParameterTransform):
         r"""Transform a batch of vectors in the hypercube to the probability simplex.
 
         Args:
-            X: An `batch_shape x latent_dim`-dim Tensor containing the latent
+            X: A `batch_shape x latent_dim`-dim Tensor containing the latent
                 scalarization parameters.
 
         Returns:
-            transformed_X: An `batch_shape x num_objectives`-dim Tensor containing
+            transformed_X: A `batch_shape x num_objectives`-dim Tensor containing
                 the scalarization parameters.
         """
         return self.transform(X=X)
@@ -203,11 +203,11 @@ class UnitVector(ScalarizationParameterTransform):
         `transform(X) = X / sqrt(sum(X^2))`.
 
         Args:
-            X: An `batch_shape x num_objectives`-dim Tensor containing the latent
+            X: A `batch_shape x num_objectives`-dim Tensor containing the latent
                 scalarization parameters.
 
         Returns:
-            transformed_X: An `batch_shape x num_objectives`-dim Tensor containing
+            transformed_X: A `batch_shape x num_objectives`-dim Tensor containing
                 the scalarization parameters.
         """
         return X / torch.sqrt(torch.sum(torch.pow(X, 2), dim=-1, keepdim=True))
@@ -229,11 +229,11 @@ class UnitVector(ScalarizationParameterTransform):
         computations are performed iteratively.
 
         Args:
-            X: An `batch_shape x (num_objectives - 1)`-dim Tensor containing the
+            X: A `batch_shape x (num_objectives - 1)`-dim Tensor containing the
                 latent scalarization parameters.
 
         Returns:
-            transformed_X: An `batch_shape x num_objectives`-dim Tensor containing
+            transformed_X: A `batch_shape x num_objectives`-dim Tensor containing
                 the scalarization parameters.
         """
         tkwargs = {"dtype": X.dtype, "device": X.device}
@@ -276,11 +276,11 @@ class UnitVector(ScalarizationParameterTransform):
         computations are performed iteratively.
 
         Args:
-            X: An `batch_shape x (num_objectives - 1)`-dim Tensor containing the
+            X: A `batch_shape x (num_objectives - 1)`-dim Tensor containing the
                 latent scalarization parameters.
 
         Returns:
-            transformed_X: An `batch_shape x num_objectives`-dim Tensor containing
+            transformed_X: A `batch_shape x num_objectives`-dim Tensor containing
                 the scalarization parameters.
         """
         tkwargs = {"dtype": X.dtype, "device": X.device}
@@ -308,11 +308,11 @@ class UnitVector(ScalarizationParameterTransform):
         `transform(X) = erfinv(X) / sqrt(erfinv(X)^2)`.
 
         Args:
-            X: An `batch_shape x num_objectives`-dim Tensor containing the latent
+            X: A `batch_shape x num_objectives`-dim Tensor containing the latent
                 scalarization parameters.
 
         Returns:
-            transformed_X: An `batch_shape x num_objectives`-dim Tensor containing
+            transformed_X: A `batch_shape x num_objectives`-dim Tensor containing
                 the scalarization parameters.
         """
         # Note that torch.erfinv(1) = inf, therefore we minus epsilon.
@@ -323,11 +323,11 @@ class UnitVector(ScalarizationParameterTransform):
         r"""Transform vectors on the hypercube into a non-negative unit vector.
 
         Args:
-            X: An `batch_shape x latent_dim`-dim Tensor containing the latent
+            X: A `batch_shape x latent_dim`-dim Tensor containing the latent
                 scalarization parameters.
 
         Returns:
-            transformed_X: An `batch_shape x num_objectives`-dim Tensor containing
+            transformed_X: A `batch_shape x num_objectives`-dim Tensor containing
                 the scalarization parameters.
         """
         return self.transform(X=X)
@@ -384,13 +384,13 @@ class OrderedUniform(ScalarizationParameterTransform):
         objectives. It is however slower for larger number of objectives.
 
         Args:
-            X: An `batch_shape x (num_objectives + 1)`-dim Tensor containing the
+            X: A `batch_shape x (num_objectives + 1)`-dim Tensor containing the
                 latent scalarization parameters.
             descending: If True, sort in descending order, else sort in ascending
                 order.
 
         Returns:
-            transformed_X: An `batch_shape x num_objectives`-dim Tensor containing
+            transformed_X: A `batch_shape x num_objectives`-dim Tensor containing
                 the scalarization parameters.
         """
         # compute exponential random variable
@@ -423,13 +423,13 @@ class OrderedUniform(ScalarizationParameterTransform):
             flip the result.
 
         Args:
-            X: An `batch_shape x num_objectives`-dim Tensor containing the latent
+            X: A `batch_shape x num_objectives`-dim Tensor containing the latent
                 scalarization parameters.
             descending: If True, sort in descending order, else sort in ascending
                 order.
 
         Returns:
-            transformed_X: An `batch_shape x num_objectives`-dim Tensor containing
+            transformed_X: A `batch_shape x num_objectives`-dim Tensor containing
                 the scalarization parameters.
         """
         M = X.shape[-1]
@@ -446,11 +446,11 @@ class OrderedUniform(ScalarizationParameterTransform):
         exponential spacing strategy.
 
         Args:
-            X: An `batch_shape x latent_dim`-dim Tensor containing the
+            X: A `batch_shape x latent_dim`-dim Tensor containing the
                 latent scalarization parameters.
 
         Returns:
-            transformed_X: An `batch_shape x num_objectives`-dim Tensor containing
+            transformed_X: A `batch_shape x num_objectives`-dim Tensor containing
                 the scalarization parameters.
         """
         return self.transform(X=X, descending=self.descending)
