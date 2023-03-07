@@ -339,8 +339,8 @@ class OrderedUniform(ScalarizationParameterTransform):
     def __init__(
         self,
         num_objectives: int,
-        transform_label: str = "exponential_spacing",
         descending: Optional[bool] = False,
+        transform_label: str = "exponential_spacing",
     ) -> None:
         r"""Ordered uniform vectors.
 
@@ -348,6 +348,7 @@ class OrderedUniform(ScalarizationParameterTransform):
             num_objectives: The number of objectives.
             descending: If True, sort in descending order, else sort in ascending
                 order.
+            transform_label: The label of the transformation.
         """
         super().__init__(num_objectives=num_objectives)
         self.descending = descending
