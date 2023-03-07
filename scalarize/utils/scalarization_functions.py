@@ -949,7 +949,7 @@ class PBIScalarization(ResidualBasedScalarizationFunction):
                 sign = -1
 
             convergence(Y) = |sum(w * residual)|
-            diversity(Y) = ||residual - convergence(Y)w||_2
+            diversity(Y) = ||residual - convergence(Y) * w||_2
 
             s(Y) = sign * convergence(Y) - beta * diversity(Y)
 
