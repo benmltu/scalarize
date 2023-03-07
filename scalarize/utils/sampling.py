@@ -2,6 +2,7 @@
 
 r"""
 Utilities for MC and qMC sampling.
+
 """
 
 from __future__ import annotations
@@ -14,9 +15,9 @@ from torch import Tensor
 from torch.quasirandom import SobolEngine
 
 from scalarize.utils.scalarization_parameters import (
-    OrderedUniformExpSpacing,
-    SimplexWeightExpNormalize,
-    UnitVectorErfNormalize,
+    OrderedUniform,
+    SimplexWeight,
+    UnitVector,
 )
 
 
@@ -84,7 +85,7 @@ def sample_ordered_uniform(
             rnd = torch.rand(n, d_eff, dtype=dtype)
 
     if ordered:
-        samples = OrderedUniformExpSpacing.transform(X=rnd, descending=descending)
+        samples = OrderedUniform.exponential_spacing(X=rnd, descending=descending)
     else:
         samples = rnd
 
@@ -132,7 +133,7 @@ def sample_ordered_simplex(
     )
 
     # inverse transform
-    return SimplexWeightExpNormalize.transform(ordered_rnd)
+    return SimplexWeight.log_normalize(ordered_rnd)
 
 
 def sample_ordered_unit_vector(
@@ -175,7 +176,7 @@ def sample_ordered_unit_vector(
     )
 
     # inverse transform
-    return UnitVectorErfNormalize.transform(ordered_rnd)
+    return UnitVector.erf_normalize(ordered_rnd)
 
 
 def sample_permutations(

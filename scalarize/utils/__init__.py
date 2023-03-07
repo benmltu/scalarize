@@ -28,16 +28,10 @@ from scalarize.utils.scalarization_objectives import (
 )
 
 from scalarize.utils.scalarization_parameters import (
-    OrderedUniformExpSpacing,
-    OrderedUniformScale,
+    OrderedUniform,
     ScalarizationParameterTransform,
-    SimplexWeightExpNormalize,
-    SimplexWeightNormalize,
-    SimplexWeightScale,
-    UnitVectorErfNormalize,
-    UnitVectorNormalize,
-    UnitVectorPolar,
-    UnitVectorScale,
+    SimplexWeight,
+    UnitVector,
 )
 
 from scalarize.utils.transformations import (
@@ -78,16 +72,11 @@ __all__ = [
     "LinearScalarization",
     "LpScalarization",
     "ModifiedChebyshevScalarization",
-    "OrderedUniformExpSpacing",
-    "OrderedUniformScale",
+    "OrderedUniform",
     "PBIScalarization",
     "SimplexWeightExpNormalize",
     "ScalarizationFunction",
     "ScalarizationParameterTransform",
-    "SimplexWeightNormalize",
-    "SimplexWeightScale",
-    "UnitVectorErfNormalize",
-    "UnitVectorNormalize",
-    "UnitVectorPolar",
-    "UnitVectorScale",
+    "SimplexWeight",
+    "UnitVector",
 ]

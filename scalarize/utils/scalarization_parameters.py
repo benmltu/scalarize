@@ -31,22 +31,6 @@ class ScalarizationParameterTransform(Module, ABC):
         super().__init__()
         self.num_objectives = num_objectives
 
-    @staticmethod
-    @abstractmethod
-    def transform(X: Tensor, **kwargs) -> Tensor:
-        r"""Transform the latent scalarization parameter to the scalarization
-        parameter.
-
-        Args:
-            X: An `batch_shape x latent_dim`-dim Tensor containing the latent
-                scalarization parameters.
-
-        Returns:
-            transformed_X: An `batch_shape x parameter_dim`-dim Tensor containing the
-                scalarization parameters.
-        """
-        pass  # pragma: no cover
-
     @abstractmethod
     def forward(self, X: Tensor) -> Tensor:
         r"""Transform the latent scalarization parameter to the scalarization
@@ -57,29 +41,41 @@ class ScalarizationParameterTransform(Module, ABC):
                 scalarization parameters.
 
         Returns:
-            transformed_X: An `batch_shape x parameter_dim`-dim Tensor containing the
+            transformed_X: A `batch_shape x parameter_dim`-dim Tensor containing the
                 scalarization parameters.
         """
         pass  # pragma: no cover
 
 
-class SimplexWeightNormalize(ScalarizationParameterTransform):
-    r"""Weights on the probability simplex."""
+class SimplexWeight(ScalarizationParameterTransform):
+    r"""Weights lying in the probability simplex."""
 
-    def __init__(self, num_objectives: int) -> None:
-        r"""Weights on the probability simplex.
+    def __init__(
+        self,
+        num_objectives: int,
+        transform_label: str = "normalize",
+    ) -> None:
+        r"""Weights lying in the probability simplex.
 
         Args:
             num_objectives: The number of objectives.
+            transform_label: The label of the transformation.
         """
         super().__init__(num_objectives=num_objectives)
-
         self.parameter_dim = num_objectives
-        self.latent_dim = num_objectives
+
+        transformations = {
+            "normalize": [self.normalize, num_objectives],
+            "scale": [self.scale, num_objectives - 1],
+            "log_normalize": [self.log_normalize, num_objectives],
+        }
+
+        self.transform = transformations[transform_label][0]
+        self.latent_dim = transformations[transform_label][1]
         self.bounds = [(0, 1) for _ in range(self.latent_dim)]
 
     @staticmethod
-    def transform(X: Tensor) -> Tensor:
+    def normalize(X: Tensor):
         r"""Transform a batch of vectors in the hypercube to the probability simplex
         by normalizing the vectors using their sums:
 
@@ -90,43 +86,13 @@ class SimplexWeightNormalize(ScalarizationParameterTransform):
                 scalarization parameters.
 
         Returns:
-            transformed_X: An `batch_shape x num_objectives`-dim Tensor containing
+            transformed_X: A `batch_shape x num_objectives`-dim Tensor containing
                 the scalarization parameters.
         """
         return X / torch.sum(X, dim=-1, keepdim=True)
 
-    def forward(self, Y: Tensor) -> Tensor:
-        r"""Transform a batch of vectors in the hypercube to the probability simplex
-        by normalizing the vectors using their sums.
-
-        Args:
-            X: An `batch_shape x num_objectives`-dim Tensor containing the latent
-                scalarization parameters.
-
-        Returns:
-            transformed_X: An `batch_shape x num_objectives`-dim Tensor containing
-                the scalarization parameters.
-        """
-        return self.transform(Y=Y)
-
-
-class SimplexWeightScale(ScalarizationParameterTransform):
-    r"""Weights on the probability simplex."""
-
-    def __init__(self, num_objectives: int) -> None:
-        r"""Weights on the probability simplex.
-
-        Args:
-            num_objectives: The number of objectives.
-        """
-        super().__init__(num_objectives=num_objectives)
-
-        self.parameter_dim = num_objectives
-        self.latent_dim = num_objectives - 1
-        self.bounds = [(0, 1) for _ in range(self.latent_dim)]
-
     @staticmethod
-    def transform(X: Tensor) -> Tensor:
+    def scale(X: Tensor) -> Tensor:
         r"""Transform a batch of vectors in the hypercube to the probability simplex
         via the scaling strategy:
 
@@ -166,38 +132,71 @@ class SimplexWeightScale(ScalarizationParameterTransform):
 
         return transformed_X
 
-    def forward(self, Y: Tensor) -> Tensor:
+    @staticmethod
+    def log_normalize(X: Tensor) -> Tensor:
         r"""Transform a batch of vectors in the hypercube to the probability simplex
-        via the scaling strategy.
+        by normalizing the negative logarithm vectors using their sums:
+
+        `transform(X) = -log(X) / sum(-log(X))`.
 
         Args:
-            X: An `batch_shape x (num_objectives-1)`-dim Tensor containing the latent
+            X: An `batch_shape x num_objectives`-dim Tensor containing the latent
                 scalarization parameters.
 
         Returns:
             transformed_X: An `batch_shape x num_objectives`-dim Tensor containing
                 the scalarization parameters.
         """
-        return self.transform(Y=Y)
+        # add eps to avoid torch.log(0)
+        eps = torch.finfo(X.dtype).eps
+        eX = -torch.log(eps + (1 - eps) * X)
+        return eX / torch.sum(eX, dim=-1, keepdim=True)
+
+    def forward(self, X: Tensor) -> Tensor:
+        r"""Transform a batch of vectors in the hypercube to the probability simplex.
+
+        Args:
+            X: An `batch_shape x latent_dim`-dim Tensor containing the latent
+                scalarization parameters.
+
+        Returns:
+            transformed_X: An `batch_shape x num_objectives`-dim Tensor containing
+                the scalarization parameters.
+        """
+        return self.transform(X=X)
 
 
-class UnitVectorNormalize(ScalarizationParameterTransform):
+class UnitVector(ScalarizationParameterTransform):
     r"""Non-negative unit vectors."""
 
-    def __init__(self, num_objectives: int) -> None:
+    def __init__(
+        self,
+        num_objectives: int,
+        transform_label: str = "erf_normalize",
+    ) -> None:
         r"""Non-negative unit vectors.
 
         Args:
             num_objectives: The number of objectives.
+            transform_label: The label of the transformation.
         """
         super().__init__(num_objectives=num_objectives)
 
         self.parameter_dim = num_objectives
-        self.latent_dim = num_objectives
+
+        transformations = {
+            "normalize": [self.normalize, num_objectives],
+            "scale": [self.scale, num_objectives - 1],
+            "polar": [self.polar, num_objectives - 1],
+            "erf_normalize": [self.erf_normalize, num_objectives],
+        }
+
+        self.transform = transformations[transform_label][0]
+        self.latent_dim = transformations[transform_label][1]
         self.bounds = [(0, 1) for _ in range(self.latent_dim)]
 
     @staticmethod
-    def transform(X: Tensor) -> Tensor:
+    def normalize(X: Tensor) -> Tensor:
         r"""Transform vectors on the hypercube into a non-negative unit vector by
         normalizing the vectors using the L2 norm:
 
@@ -213,111 +212,8 @@ class UnitVectorNormalize(ScalarizationParameterTransform):
         """
         return X / torch.sqrt(torch.sum(torch.pow(X, 2), dim=-1, keepdim=True))
 
-    def forward(self, Y: Tensor) -> Tensor:
-        r"""Transform vectors on the hypercube into a non-negative unit vector by
-        normalizing the vectors using the L2 norm.
-
-        Args:
-            X: An `batch_shape x num_objectives`-dim Tensor containing the latent
-                scalarization parameters.
-
-        Returns:
-            transformed_X: An `batch_shape x num_objectives`-dim Tensor containing
-                the scalarization parameters.
-        """
-        return self.transform(Y=Y)
-
-
-class UnitVectorPolar(ScalarizationParameterTransform):
-    r"""Non-negative unit vectors."""
-
-    def __init__(self, num_objectives: int) -> None:
-        r"""Non-negative unit vectors.
-
-        Args:
-            num_objectives: The number of objectives.
-        """
-        super().__init__(num_objectives=num_objectives)
-
-        self.parameter_dim = num_objectives
-        self.latent_dim = num_objectives - 1
-        self.bounds = [(0, 1) for _ in range(self.latent_dim)]
-
     @staticmethod
-    def transform(X: Tensor) -> Tensor:
-        r"""Transform vectors on the hypercube into a non-negative unit vector by
-        applying the standard spherical polar coordinates transformation:
-
-        `M = num_objectives`
-
-        `transform(X) = (
-            cos(X[0] * pi / 2),
-            sin(X[0] * pi / 2)cos(X[1] * pi / 2),
-            sin(X[0] * pi / 2)sin(X[1] * pi / 2)cos(X[2] * pi / 2),
-            ...,
-            sin(X[0] * pi / 2)...sin(X[M-1] * pi / 2)
-        )`.
-
-        Note this could be slow when the number of objectives is increased as the
-        computations are performed iteratively.
-
-        Args:
-            X: An `batch_shape x (num_objectives - 1)`-dim Tensor containing the
-                latent scalarization parameters.
-
-        Returns:
-            transformed_X: An `batch_shape x num_objectives`-dim Tensor containing
-                the scalarization parameters.
-        """
-        tkwargs = {"dtype": X.dtype, "device": X.device}
-        num_objectives = X.shape[-1] + 1
-        transformed_shape = torch.Size([*X.shape[:-1], torch.tensor([num_objectives])])
-        # `batch_shape x (latent_dim + 1)`
-        transformed_X = torch.zeros(transformed_shape, **tkwargs)
-        Y = torch.pi * X / 2
-
-        for m in range(0, num_objectives - 1):
-            transformed_X[..., m] = torch.cos(Y[..., m])
-            if m > 0:
-                sin_product = torch.prod(torch.sin(Y[..., 0:m]), dim=-1)
-                transformed_X[..., m] = sin_product * transformed_X[..., m]
-
-        transformed_X[..., -1] = torch.prod(torch.sin(Y), dim=-1)
-
-        return transformed_X
-
-    def forward(self, Y: Tensor) -> Tensor:
-        r"""Transform vectors on the hypercube into a non-negative unit vector by
-        applying the standard spherical polar coordinates transformation.
-
-        Args:
-            X: An `batch_shape x (num_objectives - 1)`-dim Tensor containing the
-                latent scalarization parameters.
-
-        Returns:
-            transformed_X: An `batch_shape x num_objectives`-dim Tensor containing
-                the scalarization parameters.
-        """
-        return self.transform(Y=Y)
-
-
-class UnitVectorScale(ScalarizationParameterTransform):
-    r"""Non-negative unit vectors."""
-
-    def __init__(self, num_objectives: int) -> None:
-        r"""Non-negative unit vectors.
-
-        Args:
-            num_objectives: The number of objectives.
-        """
-        super().__init__(num_objectives=num_objectives)
-
-        self.parameter_dim = num_objectives
-        self.latent_dim = num_objectives - 1
-        self.bounds = [(0, 1) for _ in range(self.latent_dim)]
-
-    @staticmethod
-    def transform(X: Tensor) -> Tensor:
+    def scale(X: Tensor) -> Tensor:
         r"""Transform vectors on the hypercube into a non-negative unit vector via
         the scaling strategy:
 
@@ -361,9 +257,23 @@ class UnitVectorScale(ScalarizationParameterTransform):
 
         return transformed_X
 
-    def forward(self, Y: Tensor) -> Tensor:
-        r"""Transform vectors on the hypercube into a non-negative unit vector via
-        the scaling strategy.
+    @staticmethod
+    def polar(X: Tensor) -> Tensor:
+        r"""Transform vectors on the hypercube into a non-negative unit vector by
+        applying the standard spherical polar coordinates transformation:
+
+        `M = num_objectives`
+
+        `transform(X) = (
+            cos(X[0] * pi / 2),
+            sin(X[0] * pi / 2)cos(X[1] * pi / 2),
+            sin(X[0] * pi / 2)sin(X[1] * pi / 2)cos(X[2] * pi / 2),
+            ...,
+            sin(X[0] * pi / 2)...sin(X[M-1] * pi / 2)
+        )`.
+
+        Note this could be slow when the number of objectives is increased as the
+        computations are performed iteratively.
 
         Args:
             X: An `batch_shape x (num_objectives - 1)`-dim Tensor containing the
@@ -373,76 +283,25 @@ class UnitVectorScale(ScalarizationParameterTransform):
             transformed_X: An `batch_shape x num_objectives`-dim Tensor containing
                 the scalarization parameters.
         """
-        return self.transform(Y=Y)
+        tkwargs = {"dtype": X.dtype, "device": X.device}
+        num_objectives = X.shape[-1] + 1
+        transformed_shape = torch.Size([*X.shape[:-1], torch.tensor([num_objectives])])
+        # `batch_shape x (latent_dim + 1)`
+        transformed_X = torch.zeros(transformed_shape, **tkwargs)
+        Y = torch.pi * X / 2
 
+        for m in range(0, num_objectives - 1):
+            transformed_X[..., m] = torch.cos(Y[..., m])
+            if m > 0:
+                sin_product = torch.prod(torch.sin(Y[..., 0:m]), dim=-1)
+                transformed_X[..., m] = sin_product * transformed_X[..., m]
 
-class SimplexWeightExpNormalize(ScalarizationParameterTransform):
-    r"""Weights on the probability simplex."""
+        transformed_X[..., -1] = torch.prod(torch.sin(Y), dim=-1)
 
-    def __init__(self, num_objectives: int) -> None:
-        r"""Weights on the probability simplex.
-
-        Args:
-            num_objectives: The number of objectives.
-        """
-        super().__init__(num_objectives=num_objectives)
-
-        self.parameter_dim = num_objectives
-        self.latent_dim = num_objectives
-        self.bounds = [(0, 1) for _ in range(self.latent_dim)]
-
-    @staticmethod
-    def transform(X: Tensor) -> Tensor:
-        r"""Transform a batch of vectors in the hypercube to the probability simplex
-        by normalizing the negative logarithm vectors using their sums:
-
-        `transform(X) = -log(X) / sum(-log(X))`.
-
-        Args:
-            X: An `batch_shape x num_objectives`-dim Tensor containing the latent
-                scalarization parameters.
-
-        Returns:
-            transformed_X: An `batch_shape x num_objectives`-dim Tensor containing
-                the scalarization parameters.
-        """
-        # add eps to avoid torch.log(0)
-        eps = torch.finfo(X.dtype).eps
-        eX = -torch.log(eps + (1 - eps) * X)
-        return eX / torch.sum(eX, dim=-1, keepdim=True)
-
-    def forward(self, Y: Tensor) -> Tensor:
-        r"""Transform a batch of vectors in the hypercube to the probability simplex
-        by normalizing the negative logarithm vectors using their sums.
-
-        Args:
-            X: An `batch_shape x num_objectives`-dim Tensor containing the latent
-                scalarization parameters.
-
-        Returns:
-            transformed_X: An `batch_shape x num_objectives`-dim Tensor containing
-                the scalarization parameters.
-        """
-        return self.transform(Y=Y)
-
-
-class UnitVectorErfNormalize(ScalarizationParameterTransform):
-    r"""Non-negative unit vectors."""
-
-    def __init__(self, num_objectives: int) -> None:
-        r"""Non-negative unit vectors.
-
-        Args:
-            num_objectives: The number of objectives.
-        """
-        super().__init__(num_objectives=num_objectives)
-
-        self.parameter_dim = num_objectives
-        self.latent_dim = num_objectives
-        self.bounds = [(0, 1) for _ in range(self.latent_dim)]
+        return transformed_X
 
     @staticmethod
-    def transform(X: Tensor) -> Tensor:
+    def erf_normalize(X: Tensor) -> Tensor:
         r"""Transform vectors on the hypercube into a non-negative unit vector by
         normalizing the error function inverse vectors using the L2 norm:
 
@@ -460,25 +319,29 @@ class UnitVectorErfNormalize(ScalarizationParameterTransform):
         eX = torch.erfinv(X - torch.finfo(X.dtype).eps).clamp_min(0)
         return eX / torch.sqrt(torch.sum(torch.pow(eX, 2), dim=-1, keepdim=True))
 
-    def forward(self, Y: Tensor) -> Tensor:
-        r"""Transform vectors on the hypercube into a non-negative unit vector by
-        normalizing the error function inverse vectors using the L2 norm.
+    def forward(self, X: Tensor) -> Tensor:
+        r"""Transform vectors on the hypercube into a non-negative unit vector.
 
         Args:
-            X: An `batch_shape x num_objectives`-dim Tensor containing the latent
+            X: An `batch_shape x latent_dim`-dim Tensor containing the latent
                 scalarization parameters.
 
         Returns:
             transformed_X: An `batch_shape x num_objectives`-dim Tensor containing
                 the scalarization parameters.
         """
-        return self.transform(Y=Y)
+        return self.transform(X=X)
 
 
-class OrderedUniformExpSpacing(ScalarizationParameterTransform):
+class OrderedUniform(ScalarizationParameterTransform):
     r"""Ordered uniform vectors."""
 
-    def __init__(self, num_objectives: int, descending: Optional[bool] = False) -> None:
+    def __init__(
+        self,
+        num_objectives: int,
+        transform_label: str = "exponential_spacing",
+        descending: Optional[bool] = False,
+    ) -> None:
         r"""Ordered uniform vectors.
 
         Args:
@@ -487,14 +350,18 @@ class OrderedUniformExpSpacing(ScalarizationParameterTransform):
                 order.
         """
         super().__init__(num_objectives=num_objectives)
-
-        self.parameter_dim = num_objectives
-        self.latent_dim = num_objectives + 1
         self.descending = descending
+        transformations = {
+            "exponential_spacing": [self.exponential_spacing, num_objectives + 1],
+            "scale": [self.scale, num_objectives],
+        }
+
+        self.transform = transformations[transform_label][0]
+        self.latent_dim = transformations[transform_label][1]
         self.bounds = [(0, 1) for _ in range(self.latent_dim)]
 
     @staticmethod
-    def transform(X: Tensor, descending: Optional[bool] = False) -> Tensor:
+    def exponential_spacing(X: Tensor, descending: Optional[bool] = False) -> Tensor:
         r"""Transform vectors on the hypercube into an ordered vector using the
         exponential spacing strategy:
 
@@ -539,41 +406,8 @@ class OrderedUniformExpSpacing(ScalarizationParameterTransform):
         else:
             return transformed_X
 
-    def forward(self, Y: Tensor) -> Tensor:
-        r"""Transform vectors on the hypercube into an ordered vector using the
-        exponential spacing strategy.
-
-        Args:
-            X: An `batch_shape x (num_objectives + 1)`-dim Tensor containing the
-                latent scalarization parameters.
-
-        Returns:
-            transformed_X: An `batch_shape x num_objectives`-dim Tensor containing
-                the scalarization parameters.
-        """
-        return self.transform(Y=Y, descending=self.descending)
-
-
-class OrderedUniformScale(ScalarizationParameterTransform):
-    r"""Ordered uniform vectors."""
-
-    def __init__(self, num_objectives: int, descending: Optional[bool] = False) -> None:
-        r"""Ordered uniform vectors.
-
-        Args:
-            num_objectives: The number of objectives.
-            descending: If True, sort in descending order, else sort in ascending
-                order.
-        """
-        super().__init__(num_objectives=num_objectives)
-
-        self.parameter_dim = num_objectives
-        self.latent_dim = num_objectives
-        self.descending = descending
-        self.bounds = [(0, 1) for _ in range(self.latent_dim)]
-
     @staticmethod
-    def transform(X: Tensor, descending: Optional[bool] = False) -> Tensor:
+    def scale(X: Tensor, descending: Optional[bool] = False) -> Tensor:
         r"""Transform vectors on the hypercube into an ordered vector using the
         inverse transform strategy:
 
@@ -607,16 +441,16 @@ class OrderedUniformScale(ScalarizationParameterTransform):
         else:
             return torch.flip(transformed_X, (-1,))
 
-    def forward(self, Y: Tensor) -> Tensor:
+    def forward(self, X: Tensor) -> Tensor:
         r"""Transform vectors on the hypercube into an ordered vector using the
-        inverse transform strategy.
+        exponential spacing strategy.
 
         Args:
-            X: An `batch_shape x num_objectives`-dim Tensor containing the latent
-                scalarization parameters.
+            X: An `batch_shape x latent_dim`-dim Tensor containing the
+                latent scalarization parameters.
 
         Returns:
             transformed_X: An `batch_shape x num_objectives`-dim Tensor containing
                 the scalarization parameters.
         """
-        return self.transform(Y=Y, descending=self.descending)
+        return self.transform(X=X, descending=self.descending)
