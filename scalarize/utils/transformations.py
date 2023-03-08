@@ -48,9 +48,9 @@ def estimate_bounds(
     `mad(Y_baseline) = median(abs(Y_baseline - median(Y_baseline))`
 
     Args:
-        Y_baseline: A `num_points x M`-dim tensor of objective vectors.
+        Y_baseline: A `batch_shape x num_points x M`-dim tensor of objective vectors.
         model: A fitted model.
-        X_baseline: A `num_points x d`-dim tensor of input vectors.
+        X_baseline: A `batch_shape x num_points x d`-dim tensor of input vectors.
         eta: A parameter that is used to control the quantile.
         kappa: A parameter that is used to control the amount of overestimation.
         sampler: If this is given along with the `model` and `X_baseline` then we
@@ -61,17 +61,16 @@ def estimate_bounds(
             Monte Carlo samples.
 
     Returns:
-        A `2 x m`-dim Tensor containing the bounds.
+        A `batch_shape x 2 x m`-dim Tensor containing the bounds.
     """
 
     if model is not None and X_baseline is not None:
         # compute model estimate
-
         if sampler is not None:
             sample_from_model = True
         elif num_samples is not None:
             sampler = SobolQMCNormalSampler(
-                num_samples=num_samples, collapse_batch_dims=True
+                sample_shape=torch.Size([num_samples]), collapse_batch_dims=True
             )
             sample_from_model = True
         else:
@@ -81,26 +80,26 @@ def estimate_bounds(
             posterior = model.posterior(X_baseline)
             if sample_from_model:
                 samples = sampler(posterior)
-                mean = samples.mean(dim=-3)
-                std = torch.sqrt(samples.var(dim=-3))
+                mean = samples.mean(dim=0)
+                std = torch.sqrt(samples.var(dim=0))
             else:
                 mean = posterior.mean
                 std = torch.sqrt(posterior.variance)
 
         if kappa is None:
-            kappa = 0.1
+            kappa = 2.0
 
         upper = (mean + kappa * std).max(dim=-2).values
         lower = (mean - kappa * std).min(dim=-2).values
 
-        bounds = torch.row_stack([lower, upper])
+        bounds = torch.stack([lower, upper], dim=-2)
         return bounds
 
     elif Y_baseline is not None:
         # compute data estimate
         upper_quantile = Y_baseline.quantile(q=0.5 + eta, dim=-2)
         lower_quantile = Y_baseline.quantile(q=0.5 - eta, dim=-2)
-        median = Y_baseline.quantile(q=0.5, dim=-2)
+        median = Y_baseline.quantile(q=0.5, dim=-2, keepdims=True)
         mad = abs(Y_baseline - median).quantile(q=0.5, dim=-2)
 
         if kappa is None:
@@ -109,7 +108,7 @@ def estimate_bounds(
         upper = upper_quantile + kappa * mad
         lower = lower_quantile - kappa * mad
 
-        bounds = torch.row_stack([lower, upper])
+        bounds = torch.stack([lower, upper], dim=-2)
         return bounds
 
     else:
@@ -160,6 +159,7 @@ def get_normalize(
                 num_samples=num_samples,
             )
         except ValueError:
+            print("Defaulting to identity bounds.")
             bounds = None
 
     return Normalize(bounds)
@@ -179,6 +179,8 @@ def get_gaussian_quantile(
     `variances = model.variance(X_baseline \cup X_tricands \cup X_uniform)`,
     where `X_triangle` are the interior candidates obtained using triangulation and
     `X_uniform ~ Uniform(bounds)` are the uniformly sampled points.
+
+    TODO: support batch bounds.
 
     Args:
         model: A fitted model.
