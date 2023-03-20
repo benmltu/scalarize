@@ -19,8 +19,7 @@
 	},
 	"acq_kwargs": {
 		"estimate_the_bounds": false,
-		"num_samples": 128,
-		"beta": 2.0
+		"num_samples": 128
 	},
 	"model_kwargs": {
 		"use_model_list": true,
