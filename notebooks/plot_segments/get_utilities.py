@@ -6,7 +6,7 @@ Get the utility values for the hypersphere example with varying number of object
 
 import sys
 import time
-from typing import Tuple
+from typing import Optional, Tuple
 
 import torch
 from botorch.utils.sampling import sample_simplex
@@ -18,7 +18,7 @@ from torch import Tensor
 def greedy_algorithm(
     all_scalarized_objective: Tensor,
     num_iterations: int,
-    num_weights: int = None,
+    num_weights: Optional[int] = None,
 ) -> Tuple[Tensor, Tensor]:
     r"""Greedy algorithm.
 

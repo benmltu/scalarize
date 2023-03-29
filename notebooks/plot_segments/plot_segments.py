@@ -4,7 +4,7 @@ r"""
 Plotting methods for the segment plots on the hypersphere problem in two-dimensions.
 """
 
-from typing import Dict, List, Tuple
+from typing import Dict, List, Optional, Tuple
 
 import matplotlib
 import matplotlib.pylab as pl
@@ -18,7 +18,7 @@ from torch import Tensor
 def greedy_algorithm(
     all_scalarized_objective: Tensor,
     num_iterations: int,
-    num_weights: int = None,
+    num_weights: Optional[int] = None,
 ) -> Tuple[Tensor, Tensor]:
     r"""Run the approximate greedy algorithm.
 

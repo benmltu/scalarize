@@ -90,14 +90,14 @@ def plot_scalarized_domination(
     ZY: Tensor,
     Zr: float,
     reference_set: Tensor,
-    contours: Optional[bool] = False,
+    contours: bool = False,
     X: Optional[Tensor] = None,
     Y: Optional[Tensor] = None,
     utopia_set: Optional[Tensor] = None,
     nadir_set: Optional[Tensor] = None,
     unit_vector: Optional[Tensor] = None,
     title: str = "Domination plot",
-    levels: Tuple[int, Tensor] = None,
+    levels: Optional[Tuple[int, Tensor]] = None,
     fontsize: int = 20,
 ) -> None:
     r"""Plot the domination regions of the scalarization function.
@@ -181,14 +181,24 @@ def plot_scalarized_domination(
             zorder=5,
         )
     if unit_vector is not None:
+        lines = []
         t = torch.linspace(-10, 10, 100).unsqueeze(-1)
         if utopia_set is not None:
-            line = utopia_set[0, :] + t * unit_vector
+            for u in unit_vector:
+                lines = lines + [utopia_set[0, :] + t * u]
         if nadir_set is not None:
-            line = nadir_set[0, :] + t * unit_vector
-        plt.plot(
-            line[:, 0], line[:, 1], color="w", linestyle="--", linewidth=2.5, zorder=4
-        )
+            for u in unit_vector:
+                lines = lines + [nadir_set[0, :] + t * u]
+
+        for line in lines:
+            plt.plot(
+                line[:, 0],
+                line[:, 1],
+                color="w",
+                linestyle="--",
+                linewidth=2.5,
+                zorder=4,
+            )
 
     plt.xlabel(r"$y^{(1)}$", fontsize=fontsize)
     plt.ylabel(r"$y^{(2)}$", fontsize=fontsize)
