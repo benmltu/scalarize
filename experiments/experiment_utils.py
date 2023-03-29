@@ -8,6 +8,7 @@ import re
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import torch
+from botorch import fit_gpytorch_mll
 from botorch.acquisition import AcquisitionFunction
 from botorch.acquisition.monte_carlo import qExpectedImprovement
 from botorch.acquisition.multi_objective.monte_carlo import (
@@ -46,17 +47,32 @@ from botorch.utils.multi_objective.box_decompositions.non_dominated import (
 )
 from botorch.utils.multi_objective.scalarization import get_chebyshev_scalarization
 from botorch.utils.sampling import draw_sobol_samples, sample_simplex
-
+from botorch.utils.transforms import unnormalize
 from gpytorch.mlls import SumMarginalLogLikelihood
 from gpytorch.mlls.exact_marginal_log_likelihood import ExactMarginalLogLikelihood
+from torch import Tensor
+from torch.nn import Module
 
 from scalarize.acquisition.analytic import Uncertainty
 from scalarize.acquisition.monte_carlo import qNoisyExpectedImprovement
-from scalarize.test_functions.multi_objective import MarineDesign, RocketInjector
-from scalarize.utils.sampling import sample_ordered_simplex, sample_ordered_unit_vector
+from scalarize.models.transforms.outcome import GaussianQuantile, Normalize
+from scalarize.test_functions.multi_objective import (
+    CabDesign,
+    FourBarTrussDesign,
+    MarineDesign,
+    ResourcePlanning,
+    RocketInjector,
+)
+from scalarize.utils.sampling import (
+    sample_ordered_simplex,
+    sample_ordered_unit_vector,
+    sample_permutations,
+)
 from scalarize.utils.scalarization_functions import (
     ChebyshevScalarization,
     HypervolumeScalarization,
+    KSScalarization,
+    LengthScalarization,
     LinearScalarization,
     LpScalarization,
     ScalarizationFunction,
@@ -67,26 +83,40 @@ from scalarize.utils.scalarization_objectives import (
 )
 from scalarize.utils.transformations import (
     estimate_bounds,
-    get_gaussian_quantile,
-    get_normalize,
+    get_baseline_candidates,
+    get_kernel_density_statistics,
 )
-from torch import Tensor
-from torch.nn import Module
 
 scalarization_functions_dict = {
-    "hypervolume": HypervolumeScalarization,
-    "linear": LinearScalarization,
     "d1": ChebyshevScalarization,
     "igd": LpScalarization,
+    "hypervolume": HypervolumeScalarization,
+    "length": LengthScalarization,
+    "linear": LinearScalarization,
+    "ks": KSScalarization,
     "r2": ChebyshevScalarization,
 }
 
 weight_distribution_dict = {
-    "unit-vector": sample_ordered_unit_vector,
     "simplex": sample_ordered_simplex,
+    "unit-vector": sample_ordered_unit_vector,
 }
 
-outcome_transform_labels = ["normalize-observations", "normalize-model", "quantile"]
+problem_dict = {
+    "bc": BraninCurrin,
+    "cab": CabDesign,
+    "carside": CarSideImpact,
+    "dtlz2": DTLZ2,
+    "gmm": GMM,
+    "marine": MarineDesign,
+    "penicillin": Penicillin,
+    "planning": ResourcePlanning,
+    "rocket": RocketInjector,
+    "truss": FourBarTrussDesign,
+    "vehicle": VehicleSafety,
+    "zdt1": ZDT1,
+    "zdt3": ZDT3,
+}
 
 supported_labels = [
     "sobol",
@@ -232,7 +262,7 @@ class SetUtility(Module):
 
     def __init__(
         self,
-        eval_problem: Callable,
+        eval_problem: Callable[[Tensor], Tensor],
         scalarization_fn: ScalarizationFunction,
         outcome_transform: OutcomeTransform,
     ) -> None:
@@ -296,8 +326,9 @@ def get_weights(
     tkwargs: Dict[str, Any],
     ordered: bool = False,
     descending: bool = True,
-    importance_order: List[int] = None,
-    importance_weights: List[float] = None,
+    importance_order: Optional[List[int]] = None,
+    distributional_preference: bool = False,
+    rho: Optional[List[float]] = None,
 ) -> Tensor:
     r"""Sample from the weight distribution.
 
@@ -313,8 +344,10 @@ def get_weights(
             importance from high to low. For example, if we have three objectives,
             and have the ordering obj_2 > obj_3 > obj_1, then we set
             `importance_order = [1, 2, 0]`.
-        importance_weights:  This is a list containing the weights applied to the
-            ordered weights.
+        distributional_preference: If True, we sample the importance order using
+            the permutation distribution.
+        rho: This is a list containing the probability weights used to sample from
+            the permutation distribution.
 
     Returns:
         A `num_weights x M`-Tensor containing the weights.
@@ -322,8 +355,8 @@ def get_weights(
     # Sample the weight vector.
     weight_distribution = weight_distribution_dict[label]
 
-    # TODO: This currently only handles one preference. Maybe try letting list of
-    #   lists.
+    # TODO: This currently only handles one preference. Maybe try to extend this to
+    #   work for a list of preference orders.
     weights = weight_distribution(
         d=num_objectives,
         n=num_weights,
@@ -339,12 +372,21 @@ def get_weights(
             )
         weights = weights[:, importance_order]
 
-    if importance_weights is not None:
-        iw = torch.tensor(importance_weights, **tkwargs)
-        if descending:
-            weights = weights / iw
-        else:
-            weights = iw * weights
+    if distributional_preference:
+        if rho is None or len(rho) != num_objectives:
+            raise ValueError(
+                f"Need to specify a suitable list of {num_objectives} weights for "
+                f"the distributional preference sampling."
+            )
+
+        permutations = sample_permutations(
+            weights=torch.tensor(rho, **tkwargs),
+            n=num_weights,
+            **tkwargs,
+        )
+        weights = torch.row_stack(
+            [weights[i, perm] for i, perm in enumerate(permutations)]
+        )
 
     return weights
 
@@ -433,7 +475,8 @@ def get_preference_multiplier_transform(
     preference_weights = util_kwargs.get("preference_weights", None)
     descending = scalarization_kwargs.get("descending", True)
     if preference_weights is None:
-        return get_normalize()
+        # identity transform
+        return Normalize()
     else:
         num_objectives = len(preference_weights)
         bounds = torch.zeros(2, num_objectives, **tkwargs)
@@ -442,7 +485,7 @@ def get_preference_multiplier_transform(
         else:
             bounds[1] = torch.tensor(preference_weights, **tkwargs)
 
-    return get_normalize(bounds=bounds)
+    return Normalize(bounds=bounds)
 
 
 def get_scalarization_function(
@@ -500,6 +543,8 @@ def get_scalarization_function(
             weights = torch.ones((1, num_objectives), **tkwargs)
         elif scalarization_label == "d1":
             weights = torch.ones((1, num_objectives), **tkwargs) / num_objectives
+        elif scalarization_label == "ks":
+            weights = None
         else:
             weights = get_weights(
                 num_objectives=num_objectives,
@@ -528,6 +573,10 @@ def get_scalarization_function(
             else:
                 ref_points = all_ref_points
 
+        elif scalarization_label == "ks":
+            ref_points = torch.zeros(2, 1, **tkwargs)
+            ref_points[1] = 1.0
+
         else:
             ref_points = get_reference_point(
                 model=model,
@@ -546,7 +595,13 @@ def get_scalarization_function(
         if k not in ["label", "use_utopia", "descending"]
     }
 
-    scalarization_fn = s_fn(weights=weights, ref_points=ref_points, **s_fn_kwargs)
+    if scalarization_label == "ks":
+        # assumes that the reference point is of shape `2 x M`
+        scalarization_fn = s_fn(
+            utopia_points=ref_points[1, :], nadir_points=ref_points[0, :]
+        )
+    else:
+        scalarization_fn = s_fn(weights=weights, ref_points=ref_points, **s_fn_kwargs)
 
     return scalarization_fn
 
@@ -585,14 +640,14 @@ def get_ei_multiplier(
         p = 0.0
 
     uniform_rv = torch.rand(1)
-    # TODO: make default beta depend on the problem settings.
+    # TODO: make default multiplier depend on the problem settings.
     # ranges = bounds[1] - bounds[0]
-    default_beta = 1.0
+    default_multiplier = 1.0
 
     if "thresh" in label:
-        multiplier = 0.0 if iteration >= p * num_iterations else default_beta
+        multiplier = 0.0 if iteration >= p * num_iterations else default_multiplier
     elif "rg" in label:
-        multiplier = 0.0 if uniform_rv > p else default_beta
+        multiplier = 0.0 if uniform_rv > p else default_multiplier
     else:
         multiplier = 0.0
 
@@ -639,22 +694,30 @@ def get_acquisition_outcome_transform(
     obj_bounds = None
     if otf_label is None:
         otf_label = "identity"
-        otf = get_normalize()
+        otf = Normalize()
 
     elif otf_label == "normalize-observations":
-        otf = get_normalize(Y_baseline=Y_baseline, eta=0.4, kappa=None)
-        obj_bounds = otf.bounds
-    elif otf_label == "normalize-model":
-        otf = get_normalize(model=model, X_baseline=X_baseline, kappa=3.0)
-        obj_bounds = otf.bounds
-    elif otf_label == "quantile-model":
-        otf = get_gaussian_quantile(
-            model=model,
-            bounds=bounds,
-            num_samples=1024,
-            max_num_tricands=1024,
-            X=X_baseline,
+        obj_bounds = estimate_bounds(
+            Y_baseline=Y_baseline,
+            eta=0.4,
+            kappa=None,
         )
+        otf = Normalize(bounds=obj_bounds)
+    elif otf_label == "normalize-model":
+        obj_bounds = estimate_bounds(
+            model=model,
+            X_baseline=X_baseline,
+            kappa=3.0,
+        )
+        otf = Normalize(bounds=obj_bounds)
+    elif otf_label == "quantile-observations":
+        means, variances = get_kernel_density_statistics(Y=Y_baseline)
+        otf = GaussianQuantile(means=means, variances=variances)
+    elif otf_label == "quantile-model":
+        posterior = model.posterior(X_baseline)
+        means = posterior.mean
+        variances = posterior.variance
+        otf = GaussianQuantile(means=means, variances=variances)
     elif otf_label == "normalize-exact":
         otf = get_problem_normalize_transform(
             name=name,
@@ -696,8 +759,8 @@ def get_acquisition_function(
     acq_kwargs: Dict[str, Any],
     util_kwargs: Dict[str, Any],
     tkwargs: Dict[str, Any],
-    Y_baseline: Optional[Tensor],
-    bounds: Optional[Tensor],
+    Y_baseline: Optional[Tensor] = None,
+    bounds: Optional[Tensor] = None,
 ) -> AcquisitionFunction:
     r"""Compute the acquisition function.
 
@@ -753,7 +816,7 @@ def get_acquisition_function(
         prune_baseline = True
         sampler = StochasticSampler(sample_shape=torch.Size([num_samples]))
     elif "-ucb" in label:
-        ucb_beta = 2.0
+        ucb_beta = acq_kwargs.get("beta", 2.0)
 
         def f_ucb(X):
             posterior = model.posterior(X)
@@ -934,7 +997,7 @@ def get_problem(name: str, tkwargs: Dict[str, Any]) -> MultiObjectiveTestProblem
 
     Args:
         name: The name of the objective function.
-        tkwargs: tkwargs: The tensor dtype to use and device to use.
+        tkwargs: The tensor dtype to use and device to use.
 
     Returns:
         The problem.
@@ -981,44 +1044,14 @@ def get_problem(name: str, tkwargs: Dict[str, Any]) -> MultiObjectiveTestProblem
         else:
             raise ValueError(f"Unknown function name: {name}!")
         return GMM(negate=True, num_objectives=num_objectives)
-    elif name == "penicillin":
-        return Penicillin(negate=True)
-    elif "vehicle" in name:
+    elif name in problem_dict.keys():
+        problem = problem_dict[name]
         if "std" in name:
             bounds = get_problem_bounds(name=name, tkwargs=tkwargs)
             ranges = bounds[1] - bounds[0]
-            return VehicleSafety(
-                negate=True, noise_std=get_noise_std(name=name) * ranges
-            )
+            return problem(negate=True, noise_std=get_noise_std(name=name) * ranges)
         else:
-            return VehicleSafety(negate=True)
-    elif "carside" in name:
-        bounds = get_problem_bounds(name=name, tkwargs=tkwargs)
-        ranges = bounds[1] - bounds[0]
-        if "std" in name:
-            return CarSideImpact(
-                negate=True, noise_std=get_noise_std(name=name) * ranges
-            )
-        else:
-            return CarSideImpact(negate=True)
-    elif "marine" in name:
-        bounds = get_problem_bounds(name=name, tkwargs=tkwargs)
-        ranges = bounds[1] - bounds[0]
-        if "std" in name:
-            return MarineDesign(
-                negate=True, noise_std=get_noise_std(name=name) * ranges
-            )
-        else:
-            return MarineDesign(negate=True)
-    elif "rocket" in name:
-        bounds = get_problem_bounds(name=name, tkwargs=tkwargs)
-        ranges = bounds[1] - bounds[0]
-        if "std" in name:
-            return RocketInjector(
-                negate=True, noise_std=get_noise_std(name=name) * ranges
-            )
-        else:
-            return RocketInjector(negate=True)
+            return problem(negate=True)
     else:
         raise ValueError(f"Unknown function name: {name}!")
 
@@ -1075,7 +1108,20 @@ def get_problem_reference_point(
     elif "gmm" in name:
         return -0.1 * torch.ones(1, 1, **tkwargs)
     elif name == "penicillin":
-        return -0.1 * torch.ones(1, 1, **tkwargs)
+        if "igd" in label or "d1" in label:
+            ref_points = torch.tensor(
+                [
+                    [5.0, -0.0, -75.0],
+                    [7.0, -8.0, -125.0],
+                    [9.0, -16.0, -175.0],
+                    [11.0, -24.0, -225.0],
+                    [13.0, -32.0, -275.0],
+                ],
+                **tkwargs,
+            )
+            return ref_points
+        else:
+            return -0.1 * torch.ones(1, 1, **tkwargs)
     elif "vehicle" in name:
         return -0.1 * torch.ones(1, 1, **tkwargs)
     elif "carside" in name:
@@ -1084,6 +1130,22 @@ def get_problem_reference_point(
         return -0.1 * torch.ones(1, 1, **tkwargs)
     elif "rocket" in name:
         return -0.1 * torch.ones(1, 1, **tkwargs)
+    elif "truss" in name:
+        return -0.1 * torch.ones(1, 1, **tkwargs)
+    elif "planning" in name:
+        if "ks" in label:
+            ref_points = torch.zeros(2, 1, **tkwargs)
+            ref_points[1] = 1.0
+            return ref_points
+        else:
+            return -0.1 * torch.ones(1, 1, **tkwargs)
+    elif "cab" in name:
+        if "ks" in label:
+            ref_points = torch.zeros(2, 1, **tkwargs)
+            ref_points[1] = 1.0
+            return ref_points
+        else:
+            return -0.1 * torch.ones(1, 1, **tkwargs)
     else:
         raise ValueError(f"Unknown function name: {name}!")
 
@@ -1129,6 +1191,24 @@ def get_problem_bounds(
         )
     elif "rocket" in name:
         bounds = torch.tensor([[-1.0, -1.25, -1.1], [-0.01, -0.005, 0.41]], **tkwargs)
+    elif "truss" in name:
+        bounds = torch.tensor([[-3000.0, -0.05], [-1240.0, -0.0]], **tkwargs)
+    elif "planning" in name:
+        bounds = torch.tensor(
+            [
+                [-83100.0, -1350.0, -2860000.0, -16100000.0, -355000.0, -98200.0],
+                [-63800.0, -30.0, -285000.0, -183800.00, -15.0, -0.0],
+            ],
+            **tkwargs,
+        )
+    elif "cab" in name:
+        bounds = torch.tensor(
+            [
+                [-42.0, -1.05, -0.95, -0.8, -1.5, -1.15, -1.11, -1.05, -1.05],
+                [-16.0, -0.25, -0.35, -0.33, -0.64, -0.66, -0.89, -0.83, -0.82],
+            ],
+            **tkwargs,
+        )
     else:
         raise ValueError(f"Unknown function name: {name}!")
 
@@ -1151,12 +1231,25 @@ def get_problem_normalize_transform(
         The normalize outcome transform.
     """
     otf_label = util_kwargs.get("outcome_transform", None)
-    # if otf_label is None:
-    #     return get_normalize()
 
     if otf_label == "normalize":
         bounds = get_problem_bounds(name=name, tkwargs=tkwargs)
-        otf = get_normalize(bounds=bounds)
+        otf = Normalize(bounds=bounds)
+    elif otf_label == "quantile":
+        # estimate the quantile transformation using the kernel density estimate
+        base_function = get_problem(name=name, tkwargs=tkwargs)
+        num_samples = util_kwargs.get("num_samples", 2**20)
+        seed = util_kwargs.get("seed", 0)
+        X = get_baseline_candidates(
+            bounds=base_function.bounds.to(**tkwargs),
+            seed=seed,
+            num_samples=num_samples,
+        )
+        fX = base_function.evaluate_true(X)
+        Y = -fX if base_function.negate else fX
+        means, variances = get_kernel_density_statistics(Y=Y)
+        otf = GaussianQuantile(means=means, variances=variances)
+
     else:
         raise ValueError(f"Unknown outcome transform: {otf_label}!")
 
@@ -1189,9 +1282,115 @@ def get_problem_outcome_transform(
 
     otf_label = util_kwargs.get("outcome_transform", None)
     otf = get_problem_normalize_transform(
-        name=name, util_kwargs=util_kwargs, tkwargs=tkwargs
+        name=name,
+        util_kwargs=util_kwargs,
+        tkwargs=tkwargs,
     )
 
     otf_dict = {otf_label: otf, "multiplier_transform": multiplier_transform}
 
     return ChainedOutcomeTransform(**otf_dict)
+
+
+def get_set_utility(
+    function_name: str,
+    scalarization_kwargs: Dict[str, Any],
+    util_kwargs: Dict[str, Any],
+    sampling_kwargs: Dict[str, Any],
+    tkwargs: Dict[str, Any],
+    estimate_utility: bool = False,
+    data: Dict[str, Any] = None,
+    model_kwargs: Dict[str, Any] = None,
+    acq_kwargs: Dict[str, Any] = None,
+) -> SetUtility:
+    r"""Get the set utility.
+
+    Args:
+        function_name: The name of the objective function.
+        scalarization_kwargs: Arguments for the scalarization function.
+        util_kwargs: Arguments for the outcome transform.
+        sampling_kwargs: The arguments used to determine the Monte Carlo samples
+            used in the scalarization function.
+        tkwargs: Arguments for tensors, dtype and device.
+        estimate_utility: If True, then we estimate the outcome transform.
+        data: The data that is used to estimate the utility.
+        model_kwargs: The arguments to fit the model.
+        acq_kwargs: The arguments for the acquisition functions.
+
+    Returns:
+        The set utility.
+    """
+    # Get the objective function
+    base_function = get_problem(name=function_name, tkwargs=tkwargs)
+    base_function.to(**tkwargs)
+    num_objectives = base_function.num_objectives
+
+    # Get the bounds
+    bounds = base_function.bounds.to(**tkwargs)
+
+    # Define the perfect evaluation.
+    def eval_problem_noiseless(X: Tensor) -> Tensor:
+        X = unnormalize(X, bounds)
+        fX = base_function.evaluate_true(X)
+        Y = -fX if base_function.negate else fX
+        return Y
+
+    # Ensure consistency of set utility performance metric across seeds by using same
+    # Monte Carlo samples.
+
+    old_state = torch.random.get_rng_state()
+    torch.manual_seed(0)
+
+    if estimate_utility:
+        # Fit the model.
+        mll, model = initialize_model(
+            train_x=data["X"], train_y=data["Y"], **model_kwargs
+        )
+        fit_gpytorch_mll(mll)
+
+        outcome_transform, _ = get_acquisition_outcome_transform(
+            name=function_name,
+            model=model,
+            scalarization_kwargs=scalarization_kwargs,
+            acq_kwargs=acq_kwargs,
+            util_kwargs=util_kwargs,
+            tkwargs=tkwargs,
+            X_baseline=data["X"],
+            Y_baseline=data["Y"],
+            bounds=None,
+        )
+    else:
+        outcome_transform = get_problem_outcome_transform(
+            name=function_name,
+            scalarization_kwargs=scalarization_kwargs,
+            util_kwargs=util_kwargs,
+            tkwargs=tkwargs,
+        )
+
+    reference_point = get_problem_reference_point(
+        name=function_name,
+        scalarization_kwargs=scalarization_kwargs,
+        util_kwargs=util_kwargs,
+        tkwargs=tkwargs,
+    )
+
+    util_scalarization_fn = get_scalarization_function(
+        num_objectives=num_objectives,
+        name=function_name,
+        scalarization_kwargs=scalarization_kwargs,
+        util_kwargs=util_kwargs,
+        sampling_kwargs=sampling_kwargs,
+        outcome_transform=outcome_transform,
+        tkwargs=tkwargs,
+        ref_points=reference_point,
+    )
+
+    set_utility = SetUtility(
+        eval_problem=eval_problem_noiseless,
+        scalarization_fn=util_scalarization_fn,
+        outcome_transform=outcome_transform,
+    )
+
+    torch.random.set_rng_state(old_state)
+
+    return set_utility

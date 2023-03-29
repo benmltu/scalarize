@@ -24,20 +24,25 @@ from botorch.optim.optimize import optimize_acqf
 from botorch.utils import draw_sobol_samples
 from botorch.utils.transforms import unnormalize
 
-from experiment_utils import (
+from scalarize.experiment_utils import (
     generate_initial_data,
     get_acquisition_function,
     get_problem,
-    get_problem_outcome_transform,
-    get_problem_reference_point,
-    get_scalarization_function,
+    get_set_utility,
     initialize_model,
-    SetUtility,
 )
 
 from torch import Tensor
 
-scalarization_functions_list = ["hypervolume", "linear", "d1", "igd", "r2"]
+scalarization_functions_list = [
+    "hypervolume",
+    "length",
+    "linear",
+    "ks",
+    "d1",
+    "igd",
+    "r2",
+]
 
 supported_labels = [
     "sobol",
@@ -155,7 +160,6 @@ def main(
     # Get the objective function
     base_function = get_problem(name=function_name, tkwargs=tkwargs)
     base_function.to(**tkwargs)
-    num_objectives = base_function.num_objectives
 
     # Set default optimization parameters.
     optimization_kwargs.setdefault("num_restarts", 20)
@@ -180,13 +184,6 @@ def main(
         Y = base_function(X_eval)
         return X, Y
 
-    # Define the perfect evaluation.
-    def eval_problem_noiseless(X: Tensor) -> Tensor:
-        X = unnormalize(X, bounds)
-        fX = base_function.evaluate_true(X)
-        Y = -fX if base_function.negate else fX
-        return Y
-
     # Get the initial data.
     X, Y = generate_initial_data(
         n=num_initial_points,
@@ -195,43 +192,17 @@ def main(
         tkwargs=tkwargs,
     )
 
-    # Ensure consistency of set utility performance metric across seeds by using same
-    # Monte Carlo samples.
-    old_state = torch.random.get_rng_state()
-    torch.manual_seed(0)
-
-    outcome_transform = get_problem_outcome_transform(
-        name=function_name,
-        scalarization_kwargs=scalarization_kwargs,
-        util_kwargs=util_kwargs,
-        tkwargs=tkwargs,
-    )
-
-    reference_point = get_problem_reference_point(
-        name=function_name,
-        scalarization_kwargs=scalarization_kwargs,
-        util_kwargs=util_kwargs,
-        tkwargs=tkwargs,
-    )
-
-    util_scalarization_fn = get_scalarization_function(
-        num_objectives=num_objectives,
-        name=function_name,
+    set_utility = get_set_utility(
+        function_name=function_name,
         scalarization_kwargs=scalarization_kwargs,
         util_kwargs=util_kwargs,
         sampling_kwargs=sampling_kwargs_util,
-        outcome_transform=outcome_transform,
         tkwargs=tkwargs,
-        ref_points=reference_point,
+        estimate_utility=False,
+        data=None,
+        model_kwargs=None,
+        acq_kwargs=None,
     )
-
-    set_utility = SetUtility(
-        eval_problem=eval_problem_noiseless,
-        scalarization_fn=util_scalarization_fn,
-        outcome_transform=outcome_transform,
-    )
-
-    torch.random.set_rng_state(old_state)
 
     # Set some counters to keep track of things.
     batch_size = 1
