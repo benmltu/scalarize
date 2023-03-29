@@ -12,7 +12,7 @@ from abc import ABC, abstractmethod
 from math import pi
 
 import torch
-
+from botorch.exceptions.errors import UnsupportedError
 from scipy.special import gamma
 from torch import Tensor
 from torch.nn import Module
@@ -82,6 +82,23 @@ class ResidualBasedScalarizationFunction(ScalarizationFunction, ABC):
             clip: If True, we clip the residual at zero.
         """
         super().__init__()
+        if weights.ndim < 2:
+            if weights.ndim == 1:
+                weights = weights.unsqueeze(0)
+            else:
+                raise UnsupportedError(
+                    "The weights should have a shape of "
+                    "`batch_shape x num_weights x num_objectives`."
+                )
+        if ref_points.ndim < 2:
+            if ref_points.ndim == 1:
+                ref_points = ref_points.unsqueeze(0)
+            else:
+                raise UnsupportedError(
+                    "The reference points should have a shape of "
+                    "`batch_shape x num_ref x num_objectives`."
+                )
+
         self.weights = weights
         self.ref_points = ref_points
         self.invert = invert
@@ -124,6 +141,11 @@ class ResidualBasedScalarizationFunction(ScalarizationFunction, ABC):
             A `batch_shape x num_points x num_weights x num_ref x M`-dim Tensor
                 containing the weighted residuals.
         """
+        if weights.ndim == 1:
+            weights = weights.unsqueeze(0)
+        if ref_points.ndim == 1:
+            ref_points = ref_points.unsqueeze(0)
+
         sign = -1.0 if invert else 1.0
         # `batch_shape x num_points x num_ref x M`
         diff = sign * (ref_points.unsqueeze(-3) - Y.unsqueeze(-2))
@@ -147,7 +169,11 @@ class LinearScalarization(ScalarizationFunction):
             negate: If True, we negate the scalarization function.
         """
         super().__init__()
-
+        if weights.ndim < 2:
+            raise UnsupportedError(
+                "The weights should have a shape of "
+                "`batch_shape x num_weights x num_objectives`."
+            )
         self.weights = weights
         self.negate = negate
 

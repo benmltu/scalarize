@@ -92,7 +92,7 @@ def triangle_candidates_fringe(X: np.ndarray) -> np.ndarray:
 
 def triangle_candidates(
     X: np.ndarray,
-    fringe: Optional[bool] = True,
+    fringe: bool = True,
     max_num_candidates: Optional[int] = None,
     best_indices: Optional[List[int]] = None,
 ) -> np.ndarray:

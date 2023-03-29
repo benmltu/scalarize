@@ -6,20 +6,19 @@ Helper utilities for constructing the transformations.
 
 from __future__ import annotations
 
-from typing import Optional
+import math
+
+from typing import Optional, Tuple
 
 import numpy as np
-
 import torch
 from botorch.models.model import Model
-from botorch.models.transforms.outcome import OutcomeTransform
 from botorch.sampling.base import MCSampler
 from botorch.sampling.normal import SobolQMCNormalSampler
 from botorch.utils import draw_sobol_samples
 from botorch.utils.transforms import normalize, unnormalize
 from torch import Tensor
 
-from scalarize.models.transforms.outcome import GaussianQuantile, Normalize
 from scalarize.utils.triangle_candidates import triangle_candidates
 
 
@@ -27,7 +26,7 @@ def estimate_bounds(
     Y_baseline: Optional[Tensor] = None,
     model: Optional[Model] = None,
     X_baseline: Optional[Tensor] = None,
-    eta: Optional[float] = 0.5,
+    eta: float = 0.5,
     kappa: Optional[float] = None,
     sampler: Optional[MCSampler] = None,
     num_samples: Optional[int] = None,
@@ -35,17 +34,19 @@ def estimate_bounds(
     r"""Estimate the bounds.
 
     Model estimate:
-    `upper_bound = max(mean(Y_i) + kappa * std(Y_i))`
-    `lower_bound = min(mean(Y_i) - kappa * std(Y_i))`,
+        `upper_bound = max(mean(Y_i) + kappa * std(Y_i))`
+        `lower_bound = min(mean(Y_i) - kappa * std(Y_i))`,
+
     where the mean and std are computed over samples `Y_i ~ f(X_baseline)` for
     `i=1, ..., num_samples`. For Gaussian processes, the mean and standard deviation
     can be computed analytically.
 
     Data estimate:
-    `upper_bound = quantile(Y_baseline, 0.5+eta) + kappa * mad(Y_baseline)`
-    `lower_bound = quantile(Y_baseline, 0.5-eta) + kappa * mad(Y_baseline)`,
+        `upper_bound = quantile(Y_baseline, 0.5+eta) + kappa * mad(Y_baseline)`
+        `lower_bound = quantile(Y_baseline, 0.5-eta) + kappa * mad(Y_baseline)`,
+
     where `mad` is the median absolute deviation:
-    `mad(Y_baseline) = median(abs(Y_baseline - median(Y_baseline))`
+        `mad(Y_baseline) = median(abs(Y_baseline - median(Y_baseline))`
 
     Args:
         Y_baseline: A `batch_shape x num_points x M`-dim tensor of objective vectors.
@@ -118,96 +119,10 @@ def estimate_bounds(
         )
 
 
-def get_normalize(
-    model: Optional[Model] = None,
-    X_baseline: Optional[Tensor] = None,
-    Y_baseline: Optional[Tensor] = None,
-    eta: Optional[float] = 0.5,
-    kappa: Optional[float] = None,
-    sampler: Optional[MCSampler] = None,
-    num_samples: Optional[int] = None,
-    bounds: Optional[Tensor] = None,
-) -> OutcomeTransform:
-    r"""Estimate the normalize outcome transform.
-
-    Args:
-        model: A fitted model.
-        X_baseline: A `num_points x d`-dim tensor of input vectors.
-        Y_baseline: A `num_points x M`-dim tensor of objective vectors.
-        eta: A parameter that is used to control the quantile.
-        kappa: A parameter that is used to control the amount of overestimation.
-        sampler: If this is given along with the `model` and `X_baseline` then we
-            compute a Monte Carlo estimate of the mean and standard deviation.
-        num_samples: If this is given along with the `model` and `X_baseline` and
-            `sampler` is None, then we compute a Monte Carlo estimate of the mean
-            and standard deviation using SobolQMCNormalSampler with `num_samples` of
-            Monte Carlo samples.
-        bounds: A `2 x M`-dim Tensor of bounds for the objective.
-
-    Returns:
-        The normalize outcome transform.
-    """
-    if bounds is None:
-        try:
-            bounds = estimate_bounds(
-                model=model,
-                X_baseline=X_baseline,
-                Y_baseline=Y_baseline,
-                eta=eta,
-                kappa=kappa,
-                sampler=sampler,
-                num_samples=num_samples,
-            )
-        except ValueError:
-            print("Defaulting to identity bounds.")
-            bounds = None
-
-    return Normalize(bounds)
-
-
-def get_gaussian_quantile(
-    model: Model,
-    bounds: Tensor,
-    num_samples: Optional[int] = 128,
-    max_num_tricands: Optional[int] = 0,
-    X: Optional[Tensor] = None,
-) -> OutcomeTransform:
-    r"""Estimate the Gaussian quantile outcome transform.
-
-    Estimate of the central moments:
-    `means = model.mean(X_baseline \cup X_tricands \cup X_uniform)`,
-    `variances = model.variance(X_baseline \cup X_tricands \cup X_uniform)`,
-    where `X_triangle` are the interior candidates obtained using triangulation and
-    `X_uniform ~ Uniform(bounds)` are the uniformly sampled points.
-
-    TODO: support batch bounds.
-
-    Args:
-        model: A fitted model.
-        bounds: A `2 x d`-dim Tensor containing the bounds of the inputs.
-        num_samples: The number of uniform samples.
-        max_num_tricands: The maximum number of candidates obtained by triangulation.
-        X: A `num_points x d`-dim tensor of input vectors to append to the
-            triangulation candidates and random samples.
-
-    Returns:
-        The Gaussian quantile outcome transform.
-    """
-    candidates = get_baseline_candidates(
-        bounds=bounds, X=X, num_samples=num_samples, max_num_tricands=max_num_tricands
-    )
-
-    posterior = model.posterior(candidates)
-    means = posterior.mean
-    variances = posterior.variance
-
-    return GaussianQuantile(means=means, variances=variances)
-
-
 def get_triangle_candidates(
     X: Tensor,
     bounds: Tensor,
-    fringe: Optional[bool] = True,
+    fringe: bool = True,
     max_num_candidates: Optional[int] = None,
     best_indices: Optional[Tensor] = None,
 ) -> Tensor:
@@ -304,20 +219,23 @@ def get_triangle_candidates(
 
 def get_baseline_candidates(
     bounds: Tensor,
+    seed: Optional[int] = None,
     X: Optional[Tensor] = None,
-    num_samples: Optional[int] = 0,
-    max_num_tricands: Optional[int] = 0,
+    num_samples: int = 0,
+    max_num_tricands: int = 0,
 ) -> Tensor:
     r"""Compute the baseline points using triangulation and sampling.
 
     This function returns:
-    `candidates = X \cup X_triangle \cup X_uniform`,
+        `candidates = X \cup X_triangle \cup X_uniform`,
+
     where `X` are the optional training inputs, `X_triangle` are the candidates
     obtained using triangulation, whilst `X_uniform` are the samples obtained from
     uniform sampling.
 
     Args:
         bounds: A `2 x d`-dim Tensor containing the bounds of the inputs.
+        seed: The seed for the uniform samples.
         X: A `N x d`-dim Tensor containing the training inputs.
         num_samples: The number of candidates generated using uniform sampling.
         max_num_tricands: The maximum number of candidates obtained by triangulation,
@@ -337,7 +255,9 @@ def get_baseline_candidates(
             candidates = torch.cat([candidates, triangle_X])
 
     if num_samples > 0:
-        uniform_X = draw_sobol_samples(bounds=bounds, n=num_samples, q=1).squeeze(-2)
+        uniform_X = draw_sobol_samples(
+            bounds=bounds, n=num_samples, q=1, seed=seed
+        ).squeeze(-2)
 
         if candidates is None:
             candidates = uniform_X
@@ -345,3 +265,21 @@ def get_baseline_candidates(
             candidates = torch.cat([candidates, uniform_X])
 
     return candidates
+
+
+def get_kernel_density_statistics(Y: Tensor) -> Tuple[Tensor, Tensor]:
+    r"""Compute the mean and variance of the kernel density estimate.
+
+    Args:
+        Y: A `batch_shape x num_points x M`-dim Tensor containing the objectives.
+
+    Returns
+        A two-tuple:
+        - A `batch_shape x num_points x M`-dim Tensor containing the mean.
+        - A `batch_shape x num_points x M`-dim Tensor containing the variance.
+    """
+    num_points = Y.shape[-2]
+    # bandwidth is equal to the standard deviation multiplied by Scott's factor
+    bandwidth = Y.std(dim=-2, keepdims=True, correction=0) * num_points ** (-0.2)
+
+    return Y, bandwidth.expand(Y.shape) ** 2

@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 
-from typing import List, Optional, Tuple
+from typing import List, Tuple
 
 import torch
 from torch import Tensor
@@ -69,7 +69,7 @@ class SimplexWeight(ScalarizationParameterTransform):
             "scale": [self.scale, num_objectives - 1],
             "log_normalize": [self.log_normalize, num_objectives],
         }
-
+        self.transform_label = transform_label
         self.transform = transformations[transform_label][0]
         self.latent_dim = transformations[transform_label][1]
         self.bounds = [(0, 1) for _ in range(self.latent_dim)]
@@ -149,8 +149,8 @@ class SimplexWeight(ScalarizationParameterTransform):
         """
         # add eps to avoid torch.log(0)
         eps = torch.finfo(X.dtype).eps
-        eX = -torch.log(eps + (1 - eps) * X)
-        return eX / torch.sum(eX, dim=-1, keepdim=True)
+        transformed_X = -torch.log(eps + (1 - eps) * X)
+        return SimplexWeight.normalize(transformed_X)
 
     def forward(self, X: Tensor) -> Tensor:
         r"""Transform a batch of vectors in the hypercube to the probability simplex.
@@ -190,7 +190,7 @@ class UnitVector(ScalarizationParameterTransform):
             "polar": [self.polar, num_objectives - 1],
             "erf_normalize": [self.erf_normalize, num_objectives],
         }
-
+        self.transform_label = transform_label
         self.transform = transformations[transform_label][0]
         self.latent_dim = transformations[transform_label][1]
         self.bounds = [(0, 1) for _ in range(self.latent_dim)]
@@ -210,7 +210,7 @@ class UnitVector(ScalarizationParameterTransform):
             transformed_X: A `batch_shape x num_objectives`-dim Tensor containing
                 the scalarization parameters.
         """
-        return X / torch.sqrt(torch.sum(torch.pow(X, 2), dim=-1, keepdim=True))
+        return X / torch.norm(X, p=2, dim=-1, keepdim=True)
 
     @staticmethod
     def scale(X: Tensor) -> Tensor:
@@ -297,8 +297,8 @@ class UnitVector(ScalarizationParameterTransform):
                 transformed_X[..., m] = sin_product * transformed_X[..., m]
 
         transformed_X[..., -1] = torch.prod(torch.sin(Y), dim=-1)
-
-        return transformed_X
+        # we need to clip values otherwise we might end up with negative weights
+        return UnitVector.normalize(transformed_X.clip(torch.finfo(X.dtype).eps))
 
     @staticmethod
     def erf_normalize(X: Tensor) -> Tensor:
@@ -316,8 +316,8 @@ class UnitVector(ScalarizationParameterTransform):
                 the scalarization parameters.
         """
         # Note that torch.erfinv(1) = inf, therefore we minus epsilon.
-        eX = torch.erfinv(X - torch.finfo(X.dtype).eps).clamp_min(0)
-        return eX / torch.sqrt(torch.sum(torch.pow(eX, 2), dim=-1, keepdim=True))
+        transformed_X = torch.erfinv(X - torch.finfo(X.dtype).eps).clamp_min(0)
+        return UnitVector.normalize(transformed_X.clip(torch.finfo(X.dtype).eps))
 
     def forward(self, X: Tensor) -> Tensor:
         r"""Transform vectors on the hypercube into a non-negative unit vector.
@@ -339,7 +339,7 @@ class OrderedUniform(ScalarizationParameterTransform):
     def __init__(
         self,
         num_objectives: int,
-        descending: Optional[bool] = False,
+        descending: bool = False,
         transform_label: str = "exponential_spacing",
     ) -> None:
         r"""Ordered uniform vectors.
@@ -356,13 +356,13 @@ class OrderedUniform(ScalarizationParameterTransform):
             "exponential_spacing": [self.exponential_spacing, num_objectives + 1],
             "scale": [self.scale, num_objectives],
         }
-
+        self.transform_label = transform_label
         self.transform = transformations[transform_label][0]
         self.latent_dim = transformations[transform_label][1]
         self.bounds = [(0, 1) for _ in range(self.latent_dim)]
 
     @staticmethod
-    def exponential_spacing(X: Tensor, descending: Optional[bool] = False) -> Tensor:
+    def exponential_spacing(X: Tensor, descending: bool = False) -> Tensor:
         r"""Transform vectors on the hypercube into an ordered vector using the
         exponential spacing strategy:
 
@@ -404,7 +404,7 @@ class OrderedUniform(ScalarizationParameterTransform):
             return transformed_X
 
     @staticmethod
-    def scale(X: Tensor, descending: Optional[bool] = False) -> Tensor:
+    def scale(X: Tensor, descending: bool = False) -> Tensor:
         r"""Transform vectors on the hypercube into an ordered vector using the
         inverse transform strategy:
 

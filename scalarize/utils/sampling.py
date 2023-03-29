@@ -53,8 +53,8 @@ def sample_ordered_uniform(
     n: int = 1,
     qmc: bool = False,
     seed: Optional[int] = None,
-    ordered: Optional[bool] = True,
-    descending: Optional[bool] = False,
+    ordered: bool = True,
+    descending: bool = False,
     device: Optional[torch.device] = None,
     dtype: Optional[torch.dtype] = None,
 ) -> Tensor:
@@ -99,8 +99,8 @@ def sample_ordered_simplex(
     n: int = 1,
     qmc: bool = False,
     seed: Optional[int] = None,
-    ordered: Optional[bool] = True,
-    descending: Optional[bool] = False,
+    ordered: bool = True,
+    descending: bool = False,
     device: Optional[torch.device] = None,
     dtype: Optional[torch.dtype] = None,
 ) -> Tensor:
@@ -141,8 +141,8 @@ def sample_ordered_unit_vector(
     n: int = 1,
     qmc: bool = False,
     seed: Optional[int] = None,
-    ordered: Optional[bool] = True,
-    descending: Optional[bool] = False,
+    ordered: bool = True,
+    descending: bool = False,
     device: Optional[torch.device] = None,
     dtype: Optional[torch.dtype] = None,
 ) -> Tensor:

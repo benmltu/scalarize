@@ -37,7 +37,7 @@ from scalarize.utils.scalarization_parameters import (
 from scalarize.utils.transformations import (
     estimate_bounds,
     get_baseline_candidates,
-    get_normalize,
+    get_kernel_density_statistics,
     get_triangle_candidates,
 )
 
@@ -52,10 +52,10 @@ __all__ = [
     "compute_scalarized_objective",
     "estimate_bounds",
     "flatten_scalarized_objective",
-    "get_utility_mcobjective",
     "get_baseline_candidates",
-    "get_normalize",
+    "get_kernel_density_statistics",
     "get_triangle_candidates",
+    "get_utility_mcobjective",
     "sample_ordered_simplex",
     "sample_ordered_uniform",
     "sample_ordered_unit_vector",
