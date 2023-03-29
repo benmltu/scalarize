@@ -1,0 +1,28 @@
+{	
+    "num_iterations": 100,
+    "num_initial_points": 16,
+    "function_name": "penicillin",
+	"optimization_kwargs": {
+	},
+    "scalarization_kwargs": {
+		"label": "d1"
+	},
+	"util_kwargs": {
+		"outcome_transform": "normalize"
+	},
+	"sampling_kwargs_util": {
+		"transform_reference_point": true
+	},
+	"sampling_kwargs_acq": {
+		"transform_reference_point": true
+	},
+	"acq_kwargs": {
+		"outcome_transform": "normalize-observations",
+		"num_samples": 128
+	},
+	"model_kwargs": {
+		"use_model_list": true,
+		"use_fixed_noise": false
+	},
+	"save_frequency": 5
+}
