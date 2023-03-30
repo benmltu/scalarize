@@ -118,6 +118,30 @@ problem_dict = {
     "zdt3": ZDT3,
 }
 
+bounds_dict = {
+    "bc": [[-306, -13.8], [-0.39, -1.19]],
+    "cab": [
+        [-42.0, -1.05, -0.95, -0.8, -1.5, -1.15, -1.11, -1.05, -1.05],
+        [-16.0, -0.25, -0.35, -0.33, -0.64, -0.66, -0.89, -0.83, -0.82],
+    ],
+    "carside": [[-41, -4.5, -13.1, -12.1], [-17.5, -3.6, -11, -0]],
+    "dtlz2": [[-2, -2], [-0, -0]],
+    "gmm2": [[-0, -0], [0.706, 0.706]],
+    "gmm3": [[-0, -0, -0], [0.706, 0.706, 0.90]],
+    "gmm4": [[-0, -0, -0, -0], [0.706, 0.706, 0.90, 0.90]],
+    "marine": [[265, -20000, -30500, -15], [2550, -4000, -2100, -0]],
+    "penicillin": [[-0, -83, -570], [20, -0, -1]],
+    "planning": [
+        [-83100.0, -1350.0, -2860000.0, -16100000.0, -355000.0, -98200.0],
+        [-63800.0, -30.0, -285000.0, -183800.00, -15.0, -0.0],
+    ],
+    "rocket": [[-1.0, -1.25, -1.1], [-0.01, -0.005, 0.41]],
+    "truss": [[-3000.0, -0.05], [-1240.0, -0.0]],
+    "vehicle": [[-1705, -11.7, -0.26], [-1650, -6.1, -0.04]],
+    "zdt1": [[-1, -10], [-0, -0]],
+    "zdt3": [[-1, -1], [-0, 0.7725]],
+}
+
 supported_labels = [
     "sobol",
     "eui",
@@ -1163,52 +1187,8 @@ def get_problem_bounds(
     Returns:
         A `2 x m`-dim Tensor containing bounds for the objectives.
     """
-    if name == "bc":
-        bounds = torch.tensor([[-306, -13.8], [-0.39, -1.19]], **tkwargs)
-    elif "zdt1" in name:
-        bounds = torch.tensor([[-1, -10], [-0, -0]], **tkwargs)
-    elif "zdt3" in name:
-        bounds = torch.tensor([[-1, -1], [-0, 0.7725]], **tkwargs)
-    elif "dtlz2" in name:
-        bounds = torch.tensor([[-2, -2], [-0, -0]], **tkwargs)
-    elif name == "gmm2":
-        bounds = torch.tensor([[-0, -0], [0.706, 0.706]], **tkwargs)
-    elif name == "gmm3":
-        bounds = torch.tensor([[-0, -0, -0], [0.706, 0.706, 0.90]], **tkwargs)
-    elif name == "gmm4":
-        bounds = torch.tensor([[-0, -0, -0, -0], [0.706, 0.706, 0.90, 0.90]], **tkwargs)
-    elif name == "penicillin":
-        bounds = torch.tensor([[-0, -83, -570], [20, -0, -1]], **tkwargs)
-    elif "vehicle" in name:
-        bounds = torch.tensor([[-1705, -11.7, -0.26], [-1650, -6.1, -0.04]], **tkwargs)
-    elif "carside" in name:
-        bounds = torch.tensor(
-            [[-41, -4.5, -13.1, -12.1], [-17.5, -3.6, -11, -0]], **tkwargs
-        )
-    elif "marine" in name:
-        bounds = torch.tensor(
-            [[265, -20000, -30500, -15], [2550, -4000, -2100, -0]], **tkwargs
-        )
-    elif "rocket" in name:
-        bounds = torch.tensor([[-1.0, -1.25, -1.1], [-0.01, -0.005, 0.41]], **tkwargs)
-    elif "truss" in name:
-        bounds = torch.tensor([[-3000.0, -0.05], [-1240.0, -0.0]], **tkwargs)
-    elif "planning" in name:
-        bounds = torch.tensor(
-            [
-                [-83100.0, -1350.0, -2860000.0, -16100000.0, -355000.0, -98200.0],
-                [-63800.0, -30.0, -285000.0, -183800.00, -15.0, -0.0],
-            ],
-            **tkwargs,
-        )
-    elif "cab" in name:
-        bounds = torch.tensor(
-            [
-                [-42.0, -1.05, -0.95, -0.8, -1.5, -1.15, -1.11, -1.05, -1.05],
-                [-16.0, -0.25, -0.35, -0.33, -0.64, -0.66, -0.89, -0.83, -0.82],
-            ],
-            **tkwargs,
-        )
+    if name in bounds_dict.keys():
+        bounds = torch.tensor(bounds_dict[name], **tkwargs)
     else:
         raise ValueError(f"Unknown function name: {name}!")
 
