@@ -50,6 +50,8 @@ from botorch.utils.sampling import draw_sobol_samples, sample_simplex
 from botorch.utils.transforms import unnormalize
 from gpytorch.mlls import SumMarginalLogLikelihood
 from gpytorch.mlls.exact_marginal_log_likelihood import ExactMarginalLogLikelihood
+from torch import Tensor
+from torch.nn import Module
 
 from scalarize.acquisition.analytic import Uncertainty
 from scalarize.acquisition.monte_carlo import qNoisyExpectedImprovement
@@ -84,8 +86,6 @@ from scalarize.utils.transformations import (
     get_baseline_candidates,
     get_kernel_density_statistics,
 )
-from torch import Tensor
-from torch.nn import Module
 
 scalarization_functions_dict = {
     "d1": ChebyshevScalarization,
@@ -315,7 +315,7 @@ class SetUtility(Module):
         Returns:
             The estimate of the set utility of all points evaluated so far up.
         """
-        # `1 x q x num_scalar`
+        # `q x num_scalar`
         scalarized_objectives = compute_scalarized_objective(
             Y=self.eval_problem(new_X),
             scalarization_fn=self.scalarization_fn,
