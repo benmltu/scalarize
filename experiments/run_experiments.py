@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 r"""
-The main script to run the experiments.
+The main script used to run the experiments.
 
 This was adapted from the BO loop used in
 https://github.com/facebookresearch/robust_mobo/tree/main/experiments/experiment_v1/main.py

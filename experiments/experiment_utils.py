@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 r"""
-Utilities for experiments.
+The utilities that are used to run the experiments.
 """
 
 import re
@@ -266,7 +266,7 @@ class SetUtility(Module):
         scalarization_fn: ScalarizationFunction,
         outcome_transform: OutcomeTransform,
     ) -> None:
-        r"""Compute a Monte Carlo estimate of the robust Bayes utility.
+        r"""Compute a Monte Carlo estimate of the Bayes utility.
 
         Args:
             eval_problem: The true function without any input or observation noise.
