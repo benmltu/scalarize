@@ -49,7 +49,7 @@ class ScalarizationFunction(Module, ABC):
                 vectors.
 
         Returns:
-            A `batch_shape x num_points x param_shape`-dim Tensor containing the
+            A `batch_shape x num_points x num_scalars`-dim Tensor containing the
                 scalarized objective vectors.
         """
         pass  # pragma: no cover
@@ -208,14 +208,15 @@ class LinearScalarization(ScalarizationFunction):
                 vectors.
 
         Returns:
-            A `batch_shape x num_points num_weights`-dim Tensor containing the
+            A `batch_shape x num_points x num_scalars`-dim Tensor containing the
                 scalarized objective vectors.
         """
-        return self.evaluate(
+        scalarized_Y = self.evaluate(
             Y=Y,
             weights=self.weights,
             negate=self.negate,
         )
+        return torch.flatten(scalarized_Y, start_dim=-self.num_params, end_dim=-1)
 
 
 class LpScalarization(ResidualBasedScalarizationFunction):
@@ -324,10 +325,10 @@ class LpScalarization(ResidualBasedScalarizationFunction):
                 vectors.
 
         Returns:
-            A `batch_shape x num_points x num_weights x num_ref`-dim Tensor
-                containing the scalarized objective vectors.
+            A `batch_shape x num_points x num_scalars`-dim Tensor containing the
+                scalarized objective vectors.
         """
-        return self.evaluate(
+        scalarized_Y = self.evaluate(
             Y=Y,
             p=self.p,
             weights=self.weights,
@@ -336,6 +337,8 @@ class LpScalarization(ResidualBasedScalarizationFunction):
             clip=self.clip,
             negate=self.negate,
         )
+
+        return torch.flatten(scalarized_Y, start_dim=-self.num_params, end_dim=-1)
 
 
 class ChebyshevScalarization(ResidualBasedScalarizationFunction):
@@ -451,10 +454,10 @@ class ChebyshevScalarization(ResidualBasedScalarizationFunction):
                 vectors.
 
         Returns:
-            A `batch_shape x num_points x num_weights x num_ref`-dim Tensor
-                containing the scalarized objective vectors.
+            A `batch_shape x num_points x num_scalars`-dim Tensor containing the
+                scalarized objective vectors.
         """
-        return self.evaluate(
+        scalarized_Y = self.evaluate(
             Y=Y,
             weights=self.weights,
             ref_points=self.ref_points,
@@ -463,6 +466,8 @@ class ChebyshevScalarization(ResidualBasedScalarizationFunction):
             clip=self.clip,
             negate=self.negate,
         )
+
+        return torch.flatten(scalarized_Y, start_dim=-self.num_params, end_dim=-1)
 
 
 class LengthScalarization(ChebyshevScalarization):
@@ -555,16 +560,18 @@ class LengthScalarization(ChebyshevScalarization):
                 vectors.
 
         Returns:
-            A `batch_shape x num_points x num_weights x num_ref`-dim Tensor
-                containing the scalarized objective vectors.
+            A `batch_shape x num_points x num_scalars`-dim Tensor containing the
+                scalarized objective vectors.
         """
-        return self.evaluate(
+        scalarized_Y = self.evaluate(
             Y=Y,
             weights=self.weights,
             ref_points=self.ref_points,
             invert=self.invert,
             clip=self.clip,
         )
+
+        return torch.flatten(scalarized_Y, start_dim=-self.num_params, end_dim=-1)
 
 
 class HypervolumeScalarization(LengthScalarization):
@@ -658,16 +665,18 @@ class HypervolumeScalarization(LengthScalarization):
                 vectors.
 
         Returns:
-            A `batch_shape x num_points x num_weights x num_ref`-dim Tensor
-                containing the scalarized objective vectors.
+            A `batch_shape x num_points x num_scalars`-dim Tensor containing the
+                scalarized objective vectors.
         """
-        return self.evaluate(
+        scalarized_Y = self.evaluate(
             Y=Y,
             weights=self.weights,
             ref_points=self.ref_points,
             invert=self.invert,
             clip=self.clip,
         )
+
+        return torch.flatten(scalarized_Y, start_dim=-self.num_params, end_dim=-1)
 
 
 class AugmentedChebyshevScalarization(ChebyshevScalarization):
@@ -779,10 +788,10 @@ class AugmentedChebyshevScalarization(ChebyshevScalarization):
                 vectors.
 
         Returns:
-            A `batch_shape x num_points x num_weights x num_ref`-dim Tensor
-                containing the scalarized objective vectors.
+            A `batch_shape x num_points x num_scalars`-dim Tensor containing the
+                scalarized objective vectors.
         """
-        return self.evaluate(
+        scalarized_Y = self.evaluate(
             Y=Y,
             weights=self.weights,
             ref_points=self.ref_points,
@@ -791,6 +800,8 @@ class AugmentedChebyshevScalarization(ChebyshevScalarization):
             pseudo=self.pseudo,
             negate=self.negate,
         )
+
+        return torch.flatten(scalarized_Y, start_dim=-self.num_params, end_dim=-1)
 
 
 class ModifiedChebyshevScalarization(ChebyshevScalarization):
@@ -902,10 +913,10 @@ class ModifiedChebyshevScalarization(ChebyshevScalarization):
                 vectors.
 
         Returns:
-            A `batch_shape x num_points x num_weights x num_ref`-dim Tensor
-                containing the scalarized objective vectors.
+            A `batch_shape x num_points x num_scalars`-dim Tensor containing the
+                scalarized objective vectors.
         """
-        return self.evaluate(
+        scalarized_Y = self.evaluate(
             Y=Y,
             weights=self.weights,
             ref_points=self.ref_points,
@@ -914,6 +925,8 @@ class ModifiedChebyshevScalarization(ChebyshevScalarization):
             pseudo=self.pseudo,
             negate=self.negate,
         )
+
+        return torch.flatten(scalarized_Y, start_dim=-self.num_params, end_dim=-1)
 
 
 class PBIScalarization(ResidualBasedScalarizationFunction):
@@ -1033,10 +1046,10 @@ class PBIScalarization(ResidualBasedScalarizationFunction):
                 vectors.
 
         Returns:
-            A `batch_shape x num_points x num_weights x num_ref`-dim Tensor
-                containing the scalarized objectives.
+            A `batch_shape x num_points x num_scalars`-dim Tensor containing the
+                scalarized objective vectors.
         """
-        return self.evaluate(
+        scalarized_Y = self.evaluate(
             Y=Y,
             weights=self.weights,
             ref_points=self.ref_points,
@@ -1044,6 +1057,8 @@ class PBIScalarization(ResidualBasedScalarizationFunction):
             invert=self.invert,
             negate=self.negate,
         )
+
+        return torch.flatten(scalarized_Y, start_dim=-self.num_params, end_dim=-1)
 
 
 class KSScalarization(LengthScalarization):
@@ -1116,11 +1131,13 @@ class KSScalarization(LengthScalarization):
                 vectors.
 
         Returns:
-            A `batch_shape x num_points x num_ref`-dim Tensor containing the
-                scalarized objectives.
+            A `batch_shape x num_points x num_scalars`-dim Tensor containing the
+                scalarized objective vectors.
         """
-        return self.evaluate(
+        scalarized_Y = self.evaluate(
             Y=Y,
             utopia_points=self.utopia_points,
             nadir_points=self.nadir_points,
         )
+
+        return torch.flatten(scalarized_Y, start_dim=-self.num_params, end_dim=-1)

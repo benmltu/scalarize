@@ -22,8 +22,7 @@ from scalarize.utils.scalarization_functions import (
 )
 
 from scalarize.utils.scalarization_objectives import (
-    compute_scalarized_objective,
-    flatten_scalarized_objective,
+    get_scalarized_samples,
     get_utility_mcobjective,
 )
 
@@ -49,11 +48,10 @@ from scalarize.utils.triangle_candidates import (
 
 
 __all__ = [
-    "compute_scalarized_objective",
     "estimate_bounds",
-    "flatten_scalarized_objective",
     "get_baseline_candidates",
     "get_kernel_density_statistics",
+    "get_scalarized_samples",
     "get_triangle_candidates",
     "get_utility_mcobjective",
     "sample_ordered_simplex",
