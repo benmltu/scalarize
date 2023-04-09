@@ -14,14 +14,14 @@ from torch import Size, Tensor
 
 
 def shapley_values(scalarized_Y: Tensor) -> Tensor:
-    r"""Computes the Monte Carlo estimate of the Shapley value.
+    r"""Computes the Monte Carlo estimate of the Shapley contribution values.
 
     Args:
         scalarized_Y: A `batch_shape x num_points x num_scalars`-dim tensor of
-            objective vectors.
+            the scalarized objective values.
 
     Returns:
-        A `batch_shape x num_points`-dim tensor of the Shapley values.
+        A `batch_shape x num_points`-dim tensor of the Shapley contribution values.
     """
     tkwargs = {"dtype": scalarized_Y.dtype, "device": scalarized_Y.device}
     num_points = scalarized_Y.shape[-2]
@@ -71,16 +71,17 @@ def shapley_values(scalarized_Y: Tensor) -> Tensor:
 
 
 def maximal_values(scalarized_Y: Tensor) -> Tensor:
-    r"""Computes the Monte Carlo estimate of the maximal contribution.
+    r"""Computes the Monte Carlo estimate of the maximal contribution values.
 
-    NOTE: The scalarized objectives should be non-negative for this to make sense.
+    NOTE: The scalarized objective values should be non-negative for this to make
+    sense.
 
     Args:
         scalarized_Y: A `batch_shape x num_points x num_scalars`-dim tensor of
-            objective vectors.
+            the scalarized objective values.
 
     Returns:
-        A `batch_shape x num_points`-dim tensor of the maximal values.
+        A `batch_shape x num_points`-dim tensor of the maximal contribution values.
     """
     max_values = torch.max(scalarized_Y, dim=-2).values.unsqueeze(-2)
     diff = scalarized_Y - torch.max(scalarized_Y, dim=-2).values.unsqueeze(-2)
@@ -100,7 +101,7 @@ def _initialize_greedy_algorithm(
 
     Args:
         scalarized_Y: A `batch_shape x num_points x num_scalars`-dim tensor of
-            objective vectors.
+            the the scalarized objective values.
 
     Returns:
         A six-element tuple containing
@@ -146,8 +147,8 @@ def _batch_argmax(
     corresponding mask.
 
     Args:
-        utility: A `batch_shape x (num_points - i) x M`-dim tensor of objective
-            vectors.
+        utility: A `batch_shape x (num_points - i) x M`-dim tensor of the scalarized
+            objective values.
         greedy_values: A `num_configs x num_points`-dim Tensor containing the greedy
             values.
         all_indices: A `num_configs x (num_points - i)`-dim Tensor of indices.
@@ -192,13 +193,13 @@ def _update_available_points(
         available_mask: A `num_configs x num_points`-dim Tensor of boolean values.
             The True values represent the points that were still available.
         scalarized_Y: A `num_configs x num_points x num_scalars`-dim Tensor
-            containing the scalarized objective.
+            containing the scalarized objective values.
 
     Returns:
         A three-element tuple containing
 
         - scalarized_Y: A `num_configs x (num_points - 1) x num_scalars`-dim Tensor
-            containing the remaining scalarized objective.
+            containing the remaining scalarized objective values.
         - all_indices: A `num_configs x (num_points - 1)`-dim Tensor containing the
             remaining indices.
         - available_mask: A `num_configs x (num_points - 1)`-dim Tensor of boolean
@@ -219,16 +220,18 @@ def _update_available_points(
 
 
 def forward_greedy_values(scalarized_Y: Tensor) -> Tensor:
-    r"""Computes the Monte Carlo estimate of the forward greedy contribution.
+    r"""Computes the Monte Carlo estimate of the forward greedy contribution values.
 
-    NOTE: The scalarized objectives should be non-negative for this to make sense.
+    NOTE: The scalarized objective values should be non-negative for this to make
+    sense.
 
     Args:
         scalarized_Y: A `batch_shape x num_points x num_scalars`-dim tensor of
-            objective vectors.
+            the scalarized objective values.
 
     Returns:
-        A `batch_shape x num_points`-dim tensor of the forward greedy values.
+        A `batch_shape x num_points`-dim tensor of the forward greedy contribution
+            values.
     """
     (
         num_points,
@@ -271,16 +274,18 @@ def forward_greedy_values(scalarized_Y: Tensor) -> Tensor:
 
 
 def backward_greedy_values(scalarized_Y: Tensor) -> Tensor:
-    r"""Computes the Monte Carlo estimate of the backward greedy contribution.
+    r"""Computes the Monte Carlo estimate of the backward greedy contribution values.
 
-    NOTE: The scalarized objectives should be non-negative for this to make sense.
+    NOTE: The scalarized objective values should be non-negative for this to make
+    sense.
 
     Args:
         scalarized_Y: A `batch_shape x num_points x num_scalars`-dim tensor of
-            objective vectors.
+            the scalarized objective values.
 
     Returns:
-        A `batch_shape x num_points`-dim tensor of the backward greedy values.
+        A `batch_shape x num_points`-dim tensor of the backward greedy contribution
+            values.
     """
     (
         num_points,

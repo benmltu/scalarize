@@ -37,7 +37,7 @@ class ScalarizationFunction(Module, ABC):
 
         Returns:
             A `batch_shape x num_points x param_shape`-dim Tensor containing the
-                scalarized objective vectors.
+                scalarized objective values.
         """
         pass  # pragma: no cover
 
@@ -50,7 +50,7 @@ class ScalarizationFunction(Module, ABC):
 
         Returns:
             A `batch_shape x num_points x num_scalars`-dim Tensor containing the
-                scalarized objective vectors.
+                scalarized objective values.
         """
         pass  # pragma: no cover
 
@@ -194,7 +194,7 @@ class LinearScalarization(ScalarizationFunction):
 
         Returns:
             A `batch_shape x num_points x num_weights`-dim Tensor containing the
-                scalarized objective vectors.
+                scalarized objective values.
         """
         sign = -1.0 if negate else 1.0
         # `batch_shape x num_points x num_weights`
@@ -209,7 +209,7 @@ class LinearScalarization(ScalarizationFunction):
 
         Returns:
             A `batch_shape x num_points x num_scalars`-dim Tensor containing the
-                scalarized objective vectors.
+                scalarized objective values.
         """
         scalarized_Y = self.evaluate(
             Y=Y,
@@ -301,7 +301,7 @@ class LpScalarization(ResidualBasedScalarizationFunction):
 
         Returns:
             A `batch_shape x num_points x num_weights x num_ref`-dim Tensor
-                containing the scalarized objective vectors.
+                containing the scalarized objective values.
         """
         sign = -1.0 if negate else 1.0
 
@@ -326,7 +326,7 @@ class LpScalarization(ResidualBasedScalarizationFunction):
 
         Returns:
             A `batch_shape x num_points x num_scalars`-dim Tensor containing the
-                scalarized objective vectors.
+                scalarized objective values.
         """
         scalarized_Y = self.evaluate(
             Y=Y,
@@ -427,7 +427,7 @@ class ChebyshevScalarization(ResidualBasedScalarizationFunction):
 
         Returns:
             A `batch_shape x num_points x num_weights x num_ref`-dim Tensor
-                containing the scalarized objective vectors.
+                containing the scalarized objective values.
         """
         sign = -1.0 if negate else 1.0
 
@@ -455,7 +455,7 @@ class ChebyshevScalarization(ResidualBasedScalarizationFunction):
 
         Returns:
             A `batch_shape x num_points x num_scalars`-dim Tensor containing the
-                scalarized objective vectors.
+                scalarized objective values.
         """
         scalarized_Y = self.evaluate(
             Y=Y,
@@ -539,9 +539,9 @@ class LengthScalarization(ChebyshevScalarization):
 
         Returns:
             A `batch_shape x num_points x num_weights x num_ref`-dim Tensor
-                containing the scalarized objective vectors.
+                containing the scalarized objective values.
         """
-        # TODO: need to be careful about dividing by zero?
+        # TODO: need to be careful about dividing by zero
         return ChebyshevScalarization.evaluate(
             Y=Y,
             weights=1 / weights,
@@ -561,7 +561,7 @@ class LengthScalarization(ChebyshevScalarization):
 
         Returns:
             A `batch_shape x num_points x num_scalars`-dim Tensor containing the
-                scalarized objective vectors.
+                scalarized objective values.
         """
         scalarized_Y = self.evaluate(
             Y=Y,
@@ -643,7 +643,7 @@ class HypervolumeScalarization(LengthScalarization):
 
         Returns:
             A `batch_shape x num_points x num_weights x num_ref`-dim Tensor
-                containing the scalarized objective vectors.
+                containing the scalarized objective values.
         """
         length = LengthScalarization.evaluate(
             Y=Y, weights=weights, ref_points=ref_points, invert=invert, clip=clip
@@ -666,7 +666,7 @@ class HypervolumeScalarization(LengthScalarization):
 
         Returns:
             A `batch_shape x num_points x num_scalars`-dim Tensor containing the
-                scalarized objective vectors.
+                scalarized objective values.
         """
         scalarized_Y = self.evaluate(
             Y=Y,
@@ -760,7 +760,7 @@ class AugmentedChebyshevScalarization(ChebyshevScalarization):
 
         Returns:
             A `batch_shape x num_points x num_weights x num_ref`-dim Tensor
-                containing the scalarized objective vectors.
+                containing the scalarized objective values.
         """
         sign = -1.0 if negate else 1.0
         # `batch_shape x num_points x num_weights x num_ref x M`
@@ -789,7 +789,7 @@ class AugmentedChebyshevScalarization(ChebyshevScalarization):
 
         Returns:
             A `batch_shape x num_points x num_scalars`-dim Tensor containing the
-                scalarized objective vectors.
+                scalarized objective values.
         """
         scalarized_Y = self.evaluate(
             Y=Y,
@@ -886,7 +886,7 @@ class ModifiedChebyshevScalarization(ChebyshevScalarization):
 
         Returns:
             A `batch_shape x num_points x num_weights x num_ref`-dim Tensor
-                containing the scalarized objective vectors.
+                containing the scalarized objective values.
         """
         sign = -1.0 if negate else 1.0
         # `batch_shape x num_points x num_weights x num_ref x M`
@@ -914,7 +914,7 @@ class ModifiedChebyshevScalarization(ChebyshevScalarization):
 
         Returns:
             A `batch_shape x num_points x num_scalars`-dim Tensor containing the
-                scalarized objective vectors.
+                scalarized objective values.
         """
         scalarized_Y = self.evaluate(
             Y=Y,
@@ -1012,7 +1012,7 @@ class PBIScalarization(ResidualBasedScalarizationFunction):
 
         Returns:
             A `batch_shape x num_points x num_weights x num_ref`-dim Tensor
-                containing the scalarized objectives.
+                containing the scalarized objective values.
         """
         sign = -1.0 if negate else 1.0
         # `batch_shape x num_points x num_weights x num_ref x M`
@@ -1047,7 +1047,7 @@ class PBIScalarization(ResidualBasedScalarizationFunction):
 
         Returns:
             A `batch_shape x num_points x num_scalars`-dim Tensor containing the
-                scalarized objective vectors.
+                scalarized objective values.
         """
         scalarized_Y = self.evaluate(
             Y=Y,
@@ -1112,7 +1112,8 @@ class KSScalarization(LengthScalarization):
                 nadir points, which are the worst possible points.
 
         Returns:
-            A `batch_shape x num_ref`-dim Tensor containing the scalarized objectives.
+            A `batch_shape x num_ref`-dim Tensor containing the scalarized objective
+                values.
         """
         # `num_points x batch_shape x num_ref`
         return LengthScalarization.evaluate(
@@ -1132,7 +1133,7 @@ class KSScalarization(LengthScalarization):
 
         Returns:
             A `batch_shape x num_points x num_scalars`-dim Tensor containing the
-                scalarized objective vectors.
+                scalarized objective values.
         """
         scalarized_Y = self.evaluate(
             Y=Y,
