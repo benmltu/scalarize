@@ -22,7 +22,7 @@ def get_scalarized_samples(
     scalarization_fn: ScalarizationFunction,
     outcome_transform: OutcomeTransform = None,
 ) -> Tensor:
-    r"""Compute the scalarized objective.
+    r"""Compute the scalarized objective samples.
 
     Args:
         Y: A `num_samples x num_points x M`-dim Tensor of objective values. Note that
@@ -34,7 +34,8 @@ def get_scalarized_samples(
         outcome_transform: An outcome transform, defaults to the identity.
 
     Returns:
-        A `num_points x (num_samples x num_scalars)`-dim Tensor.
+        A `num_points x (num_samples x num_scalars)`-dim Tensor containing the
+            scalarized samples.
     """
     if outcome_transform is None:
         # Identity transform.
