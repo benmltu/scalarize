@@ -78,7 +78,7 @@ from scalarize.utils.scalarization_functions import (
     ScalarizationFunction,
 )
 from scalarize.utils.scalarization_objectives import (
-    compute_scalarized_objective,
+    get_scalarized_samples,
     get_utility_mcobjective,
 )
 from scalarize.utils.transformations import (
@@ -211,7 +211,7 @@ def generate_initial_data(
 
     Returns:
         train_x: A `n x d`-dim Tensor containing the training inputs.
-        train_y: A `n x m`-dim Tensor containing the training outputs.
+        train_y: A `n x M`-dim Tensor containing the training outputs.
     """
     train_input = draw_sobol_samples(bounds=bounds, n=n, q=1).squeeze(-2).to(**tkwargs)
     train_x, train_y = eval_problem(train_input)
@@ -231,7 +231,7 @@ def initialize_model(
 
     Args:
         train_x: A `n x d`-dim Tensor containing the training inputs.
-        train_y: A `n x m`-dim Tensor containing the training outputs.
+        train_y: A `n x M`-dim Tensor containing the training outputs.
         use_model_list: If True, returns a ModelListGP with models for each outcome.
         use_fixed_noise: If True, assumes noise-free outcomes and uses FixedNoiseGP.
 
@@ -315,16 +315,15 @@ class SetUtility(Module):
         Returns:
             The estimate of the set utility of all points evaluated so far up.
         """
-        # `q x num_scalar`
-        scalarized_objectives = compute_scalarized_objective(
+        # `q x num_scalars`
+        scalarized_objectives = get_scalarized_samples(
             Y=self.eval_problem(new_X),
             scalarization_fn=self.scalarization_fn,
             outcome_transform=self.outcome_transform,
-            flatten=False,
         )
-        # `num_scalar`
+        # `num_scalars`
         best_values, best_indices = scalarized_objectives.max(dim=0)
-        # `num_scalar x d`
+        # `num_scalars x d`
         best_inputs = new_X[best_indices]
 
         if self.best_values is None:
@@ -425,7 +424,7 @@ def get_bounds_estimate(
     Args:
         model: The model.
         X_baseline: A `n x d`-dim Tensor containing the observed values.
-        Y_baseline: A `n x m`-dim Tensor containing the observed values.
+        Y_baseline: A `n x M`-dim Tensor containing the observed values.
 
     Returns:
         A `2 x M`-Tensor containing the estimated bounds.
@@ -460,13 +459,14 @@ def get_reference_point(
     Args:
         model: The model.
         X_baseline: A `n x d`-dim Tensor containing the observed values.
-        Y_baseline: A `n x m`-dim Tensor containing the observed values.
+        Y_baseline: A `n x M`-dim Tensor containing the observed values.
         use_utopia: If True, the reference point is the utopia, else we consider the
             nadir.
 
     Returns:
         A `num_ref_points x M`-Tensor containing the reference points.
     """
+
     # Over-estimate the utopia or nadir
     bounds = get_bounds_estimate(
         model=model,
@@ -490,7 +490,7 @@ def get_preference_multiplier_transform(
 
     Args:
         scalarization_kwargs: Arguments for the scalarization function.
-        util_kwargs: Arguments for the outcome transform.
+        util_kwargs: Arguments for the utility.
         tkwargs: Arguments for tensors, dtype and device.
 
     Returns:
@@ -532,17 +532,16 @@ def get_scalarization_function(
         name: The name of the problem function.
         num_objectives: The number of objectives.
         scalarization_kwargs: Arguments for the scalarization function.
-        util_kwargs: Arguments for the utility function.
-        sampling_kwargs: The arguments used to determine the Monte Carlo samples
-            used in the scalarization function.
+        util_kwargs: Arguments for the utility.
+        sampling_kwargs: Arguments used to determine the Monte Carlo samples for the
+            scalarization function.
         outcome_transform: The outcome transform.
         tkwargs: The tensor dtype to use and device to use.
         weights: A `num_weights x M`-Tensor containing the weights.
         ref_points: A `num_ref_points x M`-Tensor containing the reference points.
         model: The model.
         X_baseline: A `n x d`-dim Tensor containing the observed values.
-        Y_baseline: A `n x m`-dim Tensor containing the observed values.
-
+        Y_baseline: A `n x M`-dim Tensor containing the observed values.
 
     Returns:
         The scalarization function.
@@ -602,6 +601,7 @@ def get_scalarization_function(
             ref_points[1] = 1.0
 
         else:
+            # Note that this defaults to using the model estimate.
             ref_points = get_reference_point(
                 model=model,
                 X_baseline=X_baseline,
@@ -636,7 +636,7 @@ def get_ei_multiplier(
     num_iterations: int,
     bounds: Tensor,
 ) -> float:
-    r"""Compute the probability parameter.
+    r"""Get the expected utility improvement penalty parameter.
 
     Args:
         label: The label of the acquisition function.
@@ -700,7 +700,7 @@ def get_acquisition_outcome_transform(
         util_kwargs: Arguments for the utility.
         tkwargs: Arguments for tensors, dtype and device.
         X_baseline: A `num_baseline x d`-dim Tensor containing the baseline inputs.
-        Y_baseline: A `num_baseline x m`-dim Tensor containing the baseline outputs.
+        Y_baseline: A `num_baseline x M`-dim Tensor containing the baseline outputs.
         bounds: A `2 x d`-dim Tensor containing the bounds of the inputs.
 
     Returns:
@@ -771,6 +771,34 @@ def get_acquisition_outcome_transform(
     return outcome_transform, obj_bounds
 
 
+def get_uncertainty_acquisition(
+    model: Model,
+    objective_bounds: Tensor,
+    tkwargs: Dict[str, Any],
+) -> AcquisitionFunction:
+    r"""Get the uncertainty acquisition function.
+
+    Args:
+        model: The model.
+        objective_bounds: The `2 x M`-dim Tensor containing the estimated bounds for
+            the objectives.
+        tkwargs: The tensor dtype to use and device to use.
+
+    Returns:
+        The uncertainty acquisition function.
+    """
+    num_objectives = objective_bounds.shape[-1]
+    normalize_otf = UnstandardizeAnalyticMultiOutputObjective(
+        Y_mean=torch.zeros(num_objectives, **tkwargs),
+        Y_std=1 / (objective_bounds[1] - objective_bounds[0]),
+    )
+    uncertainty_acq = Uncertainty(
+        model=model,
+        objective=normalize_otf,
+    )
+    return uncertainty_acq
+
+
 def get_acquisition_function(
     name: str,
     iteration: int,
@@ -786,7 +814,7 @@ def get_acquisition_function(
     Y_baseline: Optional[Tensor] = None,
     bounds: Optional[Tensor] = None,
 ) -> AcquisitionFunction:
-    r"""Compute the acquisition function.
+    r"""Initialize the acquisition function.
 
     Args:
         name: The name of the problem function.
@@ -795,13 +823,15 @@ def get_acquisition_function(
         label: The name of the acquisition function.
         model: The model.
         X_baseline: A `num_baseline x d`-dim Tensor containing the baseline inputs.
-        scalarization_kwargs: The arguments used to determine the scalarization
+        scalarization_kwargs: Arguments for the scalarization function.
+        sampling_kwargs: Arguments for the sampling used to set the scalarization
             function.
-        acq_kwargs: The arguments for the acquisition functions.
-        util_kwargs: Arguments for the outcome transform.
+        acq_kwargs: Arguments for the acquisition functions.
+        util_kwargs: Arguments for the utility.
         tkwargs: The tensor dtype to use and device to use.
-        Y_baseline: A `num_baseline x m`-dim Tensor containing the baseline outputs.
-        bounds: A `2 x d`-dim Tensor containing the bounds of the inputs.
+        Y_baseline: A `num_baseline x M`-dim Tensor containing the baseline outputs.
+        bounds: A `2 x d`-dim Tensor containing the bounds of the inputs. Note that
+            this is the standardised bounds.
 
     Returns:
         The acquisition function.
@@ -821,15 +851,14 @@ def get_acquisition_function(
         bounds=bounds,
     )
 
-    # set the baseline objective values to be the objective ranges if available
+    # Set the baseline objective values to be the objective ranges if available.
+    Y_baseline_or_bounds = objective_bounds
     if estimate_bounds:
-        if "nparego" in label:
+        if label in ["nparego"]:
             with torch.no_grad():
                 Y_baseline_or_bounds = model.posterior(X_baseline).mean
         else:
             Y_baseline_or_bounds = Y_baseline
-    else:
-        Y_baseline_or_bounds = objective_bounds
 
     if "-ts" in label:
         acq_model = get_gp_samples(
@@ -912,18 +941,16 @@ def get_acquisition_function(
             prune_baseline=prune_baseline,
             cache_root=cache_root,
         )
-        normalize_otf = UnstandardizeAnalyticMultiOutputObjective(
-            Y_mean=torch.zeros(num_objectives, **tkwargs),
-            Y_std=1 / (objective_bounds[1] - objective_bounds[0]),
-        )
-        var_acq = Uncertainty(
+
+        uncertainty_acq = get_uncertainty_acquisition(
             model=model,
-            objective=normalize_otf,
+            objective_bounds=objective_bounds,
+            tkwargs=tkwargs,
         )
 
         acq = PenalizedAcquisitionFunction(
             raw_acqf=eui_acq,
-            penalty_func=var_acq,
+            penalty_func=uncertainty_acq,
             regularization_parameter=-ei_multiplier,
         )
 
@@ -1096,7 +1123,7 @@ def get_problem_reference_point(
         tkwargs: Arguments for tensors, dtype and device.
 
     Returns:
-        A `1 x m`-dim Tensor containing the reference point.
+        A `1 x M`-dim Tensor containing the reference point.
     """
     label = scalarization_kwargs.get("label", None)
     if name == "bc":
@@ -1185,7 +1212,7 @@ def get_problem_bounds(
         tkwargs: Arguments for tensors, dtype and device.
 
     Returns:
-        A `2 x m`-dim Tensor containing bounds for the objectives.
+        A `2 x M`-dim Tensor containing bounds for the objectives.
     """
     if name in bounds_dict.keys():
         bounds = torch.tensor(bounds_dict[name], **tkwargs)
@@ -1247,7 +1274,7 @@ def get_problem_outcome_transform(
     Args:
         name: The name of the objective function.
         scalarization_kwargs: Arguments for the scalarization function.
-        util_kwargs: Arguments for the outcome transform.
+        util_kwargs: Arguments for the utility.
         tkwargs: Arguments for tensors, dtype and device.
 
     Returns:
@@ -1279,23 +1306,23 @@ def get_set_utility(
     sampling_kwargs: Dict[str, Any],
     tkwargs: Dict[str, Any],
     estimate_utility: bool = False,
-    data: Dict[str, Any] = None,
-    model_kwargs: Dict[str, Any] = None,
-    acq_kwargs: Dict[str, Any] = None,
+    data: Optional[Dict[str, Any]] = None,
+    model_kwargs: Optional[Dict[str, Any]] = None,
+    acq_kwargs: Optional[Dict[str, Any]] = None,
 ) -> SetUtility:
     r"""Get the set utility.
 
     Args:
         function_name: The name of the objective function.
         scalarization_kwargs: Arguments for the scalarization function.
-        util_kwargs: Arguments for the outcome transform.
-        sampling_kwargs: The arguments used to determine the Monte Carlo samples
-            used in the scalarization function.
+        util_kwargs: Arguments for the utility.
+        sampling_kwargs: Arguments used to determine the sampling used in the
+            scalarization function
         tkwargs: Arguments for tensors, dtype and device.
         estimate_utility: If True, then we estimate the outcome transform.
         data: The data that is used to estimate the utility.
-        model_kwargs: The arguments to fit the model.
-        acq_kwargs: The arguments for the acquisition functions.
+        model_kwargs: Arguments used to fit the model.
+        acq_kwargs: Arguments for the acquisition functions.
 
     Returns:
         The set utility.
