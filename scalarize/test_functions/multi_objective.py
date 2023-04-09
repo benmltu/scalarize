@@ -8,7 +8,7 @@ Adapted some problems from https://github.com/ryojitanabe/reproblems
 
 from __future__ import annotations
 
-import math
+from math import pow, sqrt
 
 import torch
 from botorch.test_functions.base import MultiObjectiveTestProblem
@@ -230,8 +230,8 @@ class FourBarTrussDesign(MultiObjectiveTestProblem):
     num_objectives = 2
     _bounds = [
         (1.0, 3.0),
-        (math.sqrt(2.0), 3.0),
-        (math.sqrt(2.0), 3.0),
+        (sqrt(2.0), 3.0),
+        (sqrt(2.0), 3.0),
         (1.0, 3.0),
     ]
     _ref_point = [3000.0, 0.05]
@@ -254,12 +254,9 @@ class FourBarTrussDesign(MultiObjectiveTestProblem):
         E = 2.0 * 1e5
         L = 200.0
 
-        f1 = L * ((2 * x1) + math.sqrt(2.0) * x2 + torch.sqrt(x3) + x4)
+        f1 = L * ((2 * x1) + sqrt(2.0) * x2 + torch.sqrt(x3) + x4)
         f2 = ((F * L) / E) * (
-            (2.0 / x1)
-            + (2.0 * math.sqrt(2.0) / x2)
-            - (2.0 * math.sqrt(2.0) / x3)
-            + (2.0 / x4)
+            (2.0 / x1) + (2.0 * sqrt(2.0) / x2) - (2.0 * sqrt(2.0) / x3) + (2.0 / x4)
         )
 
         return torch.stack([f1, f2], dim=-1)
@@ -350,11 +347,9 @@ class WeldedBeam(MultiObjectiveTestProblem):
 
         M = P * (L + (x2 / 2))
         R = torch.sqrt(((x2 * x2) / 4.0) + torch.pow((x1 + x3) / 2.0, 2))
-        J = 2 * math.sqrt(2) * x1 * x2 * ((x2 * x2) / 12.0) + torch.pow(
-            (x1 + x3) / 2.0, 2
-        )
+        J = 2 * sqrt(2) * x1 * x2 * ((x2 * x2) / 12.0) + torch.pow((x1 + x3) / 2.0, 2)
 
-        tau_1 = P / (math.sqrt(2) * x1 * x2)
+        tau_1 = P / (sqrt(2) * x1 * x2)
         tau_2 = (M * R) / J
         tau = torch.sqrt(
             tau_1 * tau_1 + ((2 * tau_1 * tau_2 * x2) / (2 * R)) + (tau_2 * tau_2)
@@ -365,7 +360,7 @@ class WeldedBeam(MultiObjectiveTestProblem):
             * E
             * torch.sqrt((x3 * x3 * x4 * x4 * x4 * x4 * x4 * x4) / 36.0)
             / (L * L)
-            * (1 - (x3 / (2 * L)) * math.sqrt(E / (4 * G)))
+            * (1 - (x3 / (2 * L)) * sqrt(E / (4 * G)))
         )
 
         g1 = tau_max - tau
@@ -586,7 +581,7 @@ class ResourcePlanning(MultiObjectiveTestProblem):
 
         f1 = 106780.37 * (x2 + x3) + 61704.67
         f2 = 3000 * x1
-        f3 = 305700 * 2289 * x2 / math.pow(0.06 * 2289, 0.65)
+        f3 = 305700 * 2289 * x2 / pow(0.06 * 2289, 0.65)
         f4 = 250 * 2289 * torch.exp(-39.75 * x2 + 9.9 * x3 + 2.74)
         f5 = 25 * (1.39 / (x1 * x2) + 4940 * x3 - 80)
 
