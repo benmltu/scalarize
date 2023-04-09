@@ -2,8 +2,8 @@
 
 r"""
 Compute a Monte Carlo estimate of the contribution values.
-
 """
+
 from __future__ import annotations
 
 from typing import Tuple
@@ -76,7 +76,7 @@ def maximal_values(scalarized_Y: Tensor) -> Tensor:
     NOTE: The scalarized objectives should be non-negative for this to make sense.
 
     Args:
-        scalarized_Y: A `batch_shape x num_points x num_scalar`-dim tensor of
+        scalarized_Y: A `batch_shape x num_points x num_scalars`-dim tensor of
             objective vectors.
 
     Returns:

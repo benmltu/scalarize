@@ -62,7 +62,6 @@ def estimate_bounds(
     Returns:
         A `batch_shape x 2 x m`-dim Tensor containing the bounds.
     """
-
     if model is not None and X_baseline is not None:
         # compute model estimate
         if sampler is not None:

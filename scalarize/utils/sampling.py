@@ -2,7 +2,6 @@
 
 r"""
 Utilities for MC and qMC sampling.
-
 """
 
 from __future__ import annotations

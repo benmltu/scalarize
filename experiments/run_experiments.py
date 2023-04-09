@@ -116,7 +116,7 @@ def main(
     dtype: torch.dtype = torch.double,
     device: torch.device = torch.device("cpu"),
 ) -> None:
-    r"""Run the BO loop for given number of iterations. Supports restarting of
+    r"""Run the BO loop for a given number of iterations. Supports restarting of
     prematurely killed experiments.
 
     Args:
@@ -137,7 +137,7 @@ def main(
         sampling_kwargs_util: The arguments determining the utility function used to
             assess performance.
         sampling_kwargs_acq: The arguments determining the utility function used to
-            for the acquisition function.
+            set the acquisition function.
         acq_kwargs: The arguments determining the utility function used in
             the acquisition function.
         model_kwargs: Arguments for `initialize_model`.
@@ -214,6 +214,7 @@ def main(
     # If in the "append" mode, load the existing outputs.
     if input_dict is not None:
         assert torch.allclose(X, input_dict["X"][: X.shape[0]].to(**tkwargs))
+        assert torch.allclose(Y, input_dict["Y"][: Y.shape[0]].to(**tkwargs))
         if mode == "-a":
             # Adding iterations to existing output.
             assert input_dict["label"] == label
@@ -297,7 +298,7 @@ def main(
                     util_kwargs=util_kwargs,
                     tkwargs=tkwargs,
                     Y_baseline=Y,
-                    bounds=standard_bounds,
+                    bounds=acq_bounds,
                 )
                 torch.cuda.empty_cache()
 
