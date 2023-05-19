@@ -89,8 +89,8 @@ supported_labels = [
     "resi",
     "resi-ts",
     "resi-ucb",
-    "nehvi",
     "ehvi",
+    "nehvi",
     "parego",
     "nparego",
 ]

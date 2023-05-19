@@ -23,6 +23,7 @@ from botorch.acquisition.penalized import PenalizedAcquisitionFunction
 from botorch.models import FixedNoiseGP, ModelListGP, SingleTaskGP
 from botorch.models.deterministic import GenericDeterministicModel
 from botorch.models.model import Model
+from botorch.models.transforms.input import InputTransform
 from botorch.models.transforms.outcome import (
     ChainedOutcomeTransform,
     OutcomeTransform,
@@ -106,16 +107,23 @@ problem_dict = {
     "bc": BraninCurrin,
     "cab": CabDesign,
     "carside": CarSideImpact,
-    "dtlz2": DTLZ2,
-    "gmm": GMM,
+    "dtlz2_3": DTLZ2,
+    "dtlz2_4": DTLZ2,
+    "dtlz2_5": DTLZ2,
+    "dtlz2_6": DTLZ2,
+    "dtlz2_7": DTLZ2,
+    "dtlz2_8": DTLZ2,
+    "gmm2": GMM,
+    "gmm3": GMM,
+    "gmm4": GMM,
     "marine": MarineDesign,
     "penicillin": Penicillin,
     "planning": ResourcePlanning,
     "rocket": RocketInjector,
     "truss": FourBarTrussDesign,
     "vehicle": VehicleSafety,
-    "zdt1": ZDT1,
-    "zdt3": ZDT3,
+    "zdt1_4": ZDT1,
+    "zdt3_4": ZDT3,
 }
 
 bounds_dict = {
@@ -125,7 +133,12 @@ bounds_dict = {
         [-16.0, -0.25, -0.35, -0.33, -0.64, -0.66, -0.89, -0.83, -0.82],
     ],
     "carside": [[-41, -4.5, -13.1, -12.1], [-17.5, -3.6, -11, -0]],
-    "dtlz2": [[-2, -2], [-0, -0]],
+    "dtlz2_3": [[-2, -2], [-0, -0]],
+    "dtlz2_4": [[-2, -2], [-0, -0]],
+    "dtlz2_5": [[-2, -2], [-0, -0]],
+    "dtlz2_6": [[-2, -2], [-0, -0]],
+    "dtlz2_7": [[-2, -2], [-0, -0]],
+    "dtlz2_8": [[-2, -2], [-0, -0]],
     "gmm2": [[-0, -0], [0.706, 0.706]],
     "gmm3": [[-0, -0, -0], [0.706, 0.706, 0.90]],
     "gmm4": [[-0, -0, -0, -0], [0.706, 0.706, 0.90, 0.90]],
@@ -138,8 +151,22 @@ bounds_dict = {
     "rocket": [[-1.0, -1.25, -1.1], [-0.01, -0.005, 0.41]],
     "truss": [[-3000.0, -0.05], [-1240.0, -0.0]],
     "vehicle": [[-1705, -11.7, -0.26], [-1650, -6.1, -0.04]],
-    "zdt1": [[-1, -10], [-0, -0]],
-    "zdt3": [[-1, -1], [-0, 0.7725]],
+    "zdt1_4": [[-1, -10], [-0, -0]],
+    "zdt3_4": [[-1, -1], [-0, 0.7725]],
+}
+
+problem_kwargs_dict = {
+    "gmm2": {"num_objectives": 2},
+    "gmm3": {"num_objectives": 3},
+    "gmm4": {"num_objectives": 4},
+    "dtlz2_3": {"dim": 3},
+    "dtlz2_4": {"dim": 4},
+    "dtlz2_5": {"dim": 5},
+    "dtlz2_6": {"dim": 6},
+    "dtlz2_7": {"dim": 7},
+    "dtlz2_8": {"dim": 8},
+    "zdt1_4": {"dim": 4},
+    "zdt3_4": {"dim": 4},
 }
 
 supported_labels = [
@@ -187,8 +214,8 @@ supported_labels = [
     "resi",
     "resi-ts",
     "resi-ucb",
-    "nehvi",
     "ehvi",
+    "nehvi",
     "parego",
     "nparego",
 ]
@@ -223,6 +250,7 @@ def initialize_model(
     train_y: Tensor,
     use_model_list: bool = True,
     use_fixed_noise: bool = False,
+    input_transform: Optional[InputTransform] = None,
 ) -> Tuple[
     Union[ExactMarginalLogLikelihood, SumMarginalLogLikelihood],
     Union[FixedNoiseGP, SingleTaskGP, ModelListGP],
@@ -234,11 +262,15 @@ def initialize_model(
         train_y: A `n x M`-dim Tensor containing the training outputs.
         use_model_list: If True, returns a ModelListGP with models for each outcome.
         use_fixed_noise: If True, assumes noise-free outcomes and uses FixedNoiseGP.
+        input_transform: An optional input transform.
 
     Returns:
         The MLL and the model. Note: the model is not trained!
     """
     base_model_class = FixedNoiseGP if use_fixed_noise else SingleTaskGP
+    # Put input transform in training mode.
+    if input_transform is not None:
+        input_transform = input_transform.train()
 
     # define models for objective and constraint
     if use_fixed_noise:
@@ -252,6 +284,7 @@ def initialize_model(
                     "train_X": train_x,
                     "train_Y": train_y[..., i : i + 1],
                     "outcome_transform": Standardize(m=1),
+                    "input_transform": input_transform,
                 }
             )
             if use_fixed_noise:
@@ -265,6 +298,7 @@ def initialize_model(
             "train_X": train_x,
             "train_Y": train_y,
             "outcome_transform": Standardize(m=train_y.shape[-1]),
+            "input_transform": input_transform,
         }
         if use_fixed_noise:
             model_kwargs["train_Yvar"] = train_Yvar
@@ -1053,56 +1087,22 @@ def get_problem(name: str, tkwargs: Dict[str, Any]) -> MultiObjectiveTestProblem
     Returns:
         The problem.
     """
-    if name == "bc":
-        return BraninCurrin(negate=True)
-    elif name == "zdt1_4":
-        return ZDT1(negate=True, dim=4)
-    elif "zdt3" in name:
-        if name == "zdt3_2":
-            dim = 2
-        elif name == "zdt3_3":
-            dim = 3
-        elif name == "zdt3_4":
-            dim = 4
-        elif name == "zdt3_8":
-            dim = 8
-        else:
-            raise ValueError(f"Unknown function name: {name}!")
-        return ZDT3(negate=True, dim=dim)
-    elif "dtlz2" in name:
-        if "dtlz2_3" in name:
-            dim = 3
-        elif "dtlz2_4" in name:
-            dim = 4
-        elif "dtlz2_5" in name:
-            dim = 5
-        elif "dtlz2_6" in name:
-            dim = 6
-        elif "dtlz2_7" in name:
-            dim = 7
-        elif "dtlz2_8" in name:
-            dim = 8
-        else:
-            raise ValueError(f"Unknown function name: {name}!")
-        return DTLZ2(negate=True, dim=dim, num_objectives=2)
-    elif "gmm" in name:
-        if name == "gmm2":
-            num_objectives = 2
-        elif name == "gmm3":
-            num_objectives = 3
-        elif name == "gmm4":
-            num_objectives = 4
-        else:
-            raise ValueError(f"Unknown function name: {name}!")
-        return GMM(negate=True, num_objectives=num_objectives)
-    elif name in problem_dict.keys():
+    if name in problem_dict.keys():
         problem = problem_dict[name]
+        problem_kwargs = {}
+        if name in problem_kwargs_dict.keys():
+            problem_kwargs = problem_kwargs_dict[name]
+
         if "std" in name:
             bounds = get_problem_bounds(name=name, tkwargs=tkwargs)
             ranges = bounds[1] - bounds[0]
-            return problem(negate=True, noise_std=get_noise_std(name=name) * ranges)
+            return problem(
+                negate=True,
+                noise_std=get_noise_std(name=name) * ranges,
+                **problem_kwargs,
+            )
         else:
-            return problem(negate=True)
+            return problem(negate=True, **problem_kwargs)
     else:
         raise ValueError(f"Unknown function name: {name}!")
 
@@ -1128,7 +1128,7 @@ def get_problem_reference_point(
     label = scalarization_kwargs.get("label", None)
     if name == "bc":
         return -0.1 * torch.ones(1, 1, **tkwargs)
-    elif name == "zdt1_4":
+    elif "zdt1" in name:
         return -0.1 * torch.ones(1, 1, **tkwargs)
     elif "zdt3" in name:
         return -0.1 * torch.ones(1, 1, **tkwargs)
@@ -1153,7 +1153,11 @@ def get_problem_reference_point(
             ref_points, _ = otf(lower_pf)
             return ref_points
         elif "r2" in label:
-            return 0.1 * torch.ones(1, 1, **tkwargs)
+            use_utopia = scalarization_kwargs.get("use_utopia", True)
+            if use_utopia:
+                return 0.1 * torch.ones(1, 1, **tkwargs)
+            else:
+                return -0.1 * torch.ones(1, 1, **tkwargs)
         else:
             return -0.1 * torch.ones(1, 1, **tkwargs)
     elif "gmm" in name:
@@ -1182,7 +1186,14 @@ def get_problem_reference_point(
     elif "rocket" in name:
         return -0.1 * torch.ones(1, 1, **tkwargs)
     elif "truss" in name:
-        return -0.1 * torch.ones(1, 1, **tkwargs)
+        if "r2" in label:
+            use_utopia = scalarization_kwargs.get("use_utopia", True)
+            if use_utopia:
+                return 0.1 * torch.ones(1, 1, **tkwargs)
+            else:
+                return -0.1 * torch.ones(1, 1, **tkwargs)
+        else:
+            return -0.1 * torch.ones(1, 1, **tkwargs)
     elif "planning" in name:
         if "ks" in label:
             ref_points = torch.zeros(2, 1, **tkwargs)

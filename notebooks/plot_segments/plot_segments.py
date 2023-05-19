@@ -101,7 +101,7 @@ def plot_segments(
     """
     colors = pl.cm.viridis(np.linspace(0, 1, num_iterations))
     s_max = (
-        r"$\text{argmax}_{\mathbf{x} \in \mathbb{X}} "
+        r"$\text{max}_{\mathbf{x} \in \mathbb{X}} "
         r"s_{\boldsymbol{\theta}}(f(\mathbf{x}))$"
     )
 
@@ -255,7 +255,7 @@ def plot_all_segments_mc(
             plt.ylabel(r"$s_{\boldsymbol{\theta}}(f(\mathbf{x}))$", fontsize=25)
 
     axes[0, 0].legend(
-        fontsize=20, facecolor="white", loc="lower center", framealpha=1
+        fontsize=22, facecolor="white", loc="lower center", framealpha=1
     ).set_zorder(2 * num_iterations)
 
     ax_bar = fig.add_axes([0.135, -0.00, 0.75, 0.05])
