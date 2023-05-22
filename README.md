@@ -1,6 +1,6 @@
 # Scalarize
 
-This repository contains the code for the scalarization-based acquisition functions described in our paper (TODO: add reference). All of the strategies are implemented based on the BoTorch library (https://github.com/pytorch/botorch/). 
+This repository contains the code for the scalarization-based acquisition functions described in our paper (https://arxiv.org/abs/2305.11774). All of the strategies are implemented based on the BoTorch library (https://github.com/pytorch/botorch/). 
 
 ### Dependencies
 This code was initially implemented with the following dependencies:
@@ -20,4 +20,4 @@ This code was initially implemented with the following dependencies:
 - The plot_experiments folder contains the notebooks used to plot the results of the experiments.
 - The scalarize folder contains the code needed to execute these strategies. The folder is organised is a similar way to the BoTorch repository.
 
-If you want to discuss more about the code presented here, feel free to raise a discussion or to e-mail me ben.tu16@imperial.ac.uk.
+If you want to discuss more about the code presented here, feel free to e-mail me ben.tu16@imperial.ac.uk.
