@@ -380,11 +380,7 @@ if __name__ == "__main__":
     seed = int(float(sys.argv[3]))
     last_arg = sys.argv[4] if len(sys.argv) > 4 else None
     output_path = os.path.join(exp_dir, label, f"{str(seed).zfill(4)}_{label}.pt")
-    if last_arg == "-a":
-        input_dict = torch.load(output_path)
-    else:
-        input_dict = None
-
+    input_dict = None
     mode = None
     if os.path.exists(output_path):
         if last_arg and last_arg in ["-a", "-f"]:
