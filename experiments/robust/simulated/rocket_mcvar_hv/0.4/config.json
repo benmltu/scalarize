@@ -1,0 +1,56 @@
+{	
+    "num_iterations": 100,
+    "num_initial_points": 10,
+    "function_name": "rocket",
+	"optimization_kwargs": {
+	},
+    "scalarization_kwargs": {
+		"label": "hypervolume"
+	},
+	"util_kwargs": {
+		"outcome_transform": "normalize"
+	},
+	"sampling_kwargs_util": {
+		"label": "unit-vector",
+		"num_weights": 512,
+		"transform_reference_point": false
+	},
+	"sampling_kwargs_acq": {
+		"label": "unit-vector",
+		"num_weights": 64,
+		"transform_reference_point": true
+	},
+	"environment_kwargs": {
+		"setting": "simulated"
+	},
+	"input_transform_kwargs": {
+		"label": "feature",
+		"feature_indices": [3]
+	},
+	"robust_kwargs": {
+		"label": "MCVaR",
+		"beta": 10,
+		"alpha": 0.4
+	},
+	"perturbation_kwargs_util": {
+		"num_perturbations": 64,
+		"method": "truncated-normal",
+		"mean": 0.5,
+		"std_dev": 0.25
+	},
+	"perturbation_kwargs_acq": {
+		"num_perturbations": 16,
+		"method": "truncated-normal",
+		"mean": 0.5,
+		"std_dev": 0.25
+	},
+	"acq_kwargs": {
+		"outcome_transform": "normalize-observations",
+		"num_samples": 64
+	},
+	"model_kwargs": {
+		"use_model_list": true,
+		"use_fixed_noise": false
+	},
+	"save_frequency": 5
+}

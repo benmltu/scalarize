@@ -1,0 +1,55 @@
+{	
+    "num_iterations": 100,
+    "num_initial_points": 12,
+    "function_name": "vehicle",
+	"optimization_kwargs": {
+	},
+    "scalarization_kwargs": {
+		"label": "hypervolume"
+	},
+	"util_kwargs": {
+		"outcome_transform": "normalize"
+	},
+	"sampling_kwargs_util": {
+		"label": "unit-vector",
+		"num_weights": 512,
+		"transform_reference_point": false
+	},
+	"sampling_kwargs_acq": {
+		"label": "unit-vector",
+		"num_weights": 64,
+		"transform_reference_point": true
+	},
+	"environment_kwargs": {
+		"setting": "simulated"
+	},
+	"input_transform_kwargs": {
+		"label": "feature",
+		"feature_indices": [3, 4]
+	},
+	"robust_kwargs": {
+		"label": "ChiSquare",
+		"epsilon": 0.6
+	},
+	"perturbation_kwargs_util": {
+		"num_perturbations": 64,
+		"method": "uniform",
+		"mean": 0.5,
+		"delta": 0.5
+	},
+	"perturbation_kwargs_acq": {
+		"num_perturbations": 16,
+		"method": "uniform",
+		"mean": 0.5,
+		"delta": 0.5
+	},
+	"acq_kwargs": {
+		"outcome_transform": "normalize-observations",
+		"num_samples": 64
+	},
+	"model_kwargs": {
+		"use_model_list": true,
+		"use_fixed_noise": false
+	},
+	"save_frequency": 5
+}
