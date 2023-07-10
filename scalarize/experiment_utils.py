@@ -63,6 +63,7 @@ from scalarize.test_functions.multi_objective import (
     MarineDesign,
     ResourcePlanning,
     RocketInjector,
+    WeldedBeam,
 )
 from scalarize.utils.sampling import (
     sample_ordered_simplex,
@@ -122,7 +123,9 @@ problem_dict = {
     "rocket": RocketInjector,
     "truss": FourBarTrussDesign,
     "vehicle": VehicleSafety,
+    "beam": WeldedBeam,
     "zdt1_4": ZDT1,
+    "zdt3_2": ZDT3,
     "zdt3_4": ZDT3,
 }
 
@@ -151,7 +154,9 @@ bounds_dict = {
     "rocket": [[-1.0, -1.25, -1.1], [-0.01, -0.005, 0.41]],
     "truss": [[-3000.0, -0.05], [-1240.0, -0.0]],
     "vehicle": [[-1705, -11.7, -0.26], [-1650, -6.1, -0.04]],
+    "beam": [[-330.0, -17500.0, -400000000.0], [-0.015, -0.0004, 0.0]],
     "zdt1_4": [[-1, -10], [-0, -0]],
+    "zdt3_2": [[-1, -1], [-0, 0.7725]],
     "zdt3_4": [[-1, -1], [-0, 0.7725]],
 }
 
@@ -166,6 +171,7 @@ problem_kwargs_dict = {
     "dtlz2_7": {"dim": 7},
     "dtlz2_8": {"dim": 8},
     "zdt1_4": {"dim": 4},
+    "zdt3_2": {"dim": 2},
     "zdt3_4": {"dim": 4},
 }
 
@@ -1208,6 +1214,8 @@ def get_problem_reference_point(
             return ref_points
         else:
             return -0.1 * torch.ones(1, 1, **tkwargs)
+    elif "beam" in name:
+        return -0.1 * torch.ones(1, 1, **tkwargs)
     else:
         raise ValueError(f"Unknown function name: {name}!")
 
@@ -1320,6 +1328,7 @@ def get_set_utility(
     data: Optional[Dict[str, Any]] = None,
     model_kwargs: Optional[Dict[str, Any]] = None,
     acq_kwargs: Optional[Dict[str, Any]] = None,
+    seed: int = 0,
 ) -> SetUtility:
     r"""Get the set utility.
 
@@ -1334,6 +1343,7 @@ def get_set_utility(
         data: The data that is used to estimate the utility.
         model_kwargs: Arguments used to fit the model.
         acq_kwargs: Arguments for the acquisition functions.
+        seed: The default seed.
 
     Returns:
         The set utility.
@@ -1357,7 +1367,7 @@ def get_set_utility(
     # Monte Carlo samples.
 
     old_state = torch.random.get_rng_state()
-    torch.manual_seed(0)
+    torch.manual_seed(seed)
 
     if estimate_utility:
         # Fit the model.
