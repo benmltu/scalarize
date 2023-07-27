@@ -81,11 +81,9 @@ supported_labels = [
     "robust-eui",
     "robust-eui-ucb",
     "robust-eui-ts",
-    "robust-aeui-ucb",
     "robust-resi",
     "robust-resi-ucb",
     "robust-resi-ts",
-    "robust-aresi-ucb",
     "ehvi",
     "nehvi",
     "parego",
@@ -96,17 +94,13 @@ robust_acquisition_list = [
     "robust-eui",
     "robust-eui-ucb",
     "robust-eui-ts",
-    "robust-aeui-ucb",
     "robust-resi",
     "robust-resi-ucb",
     "robust-resi-ts",
-    "robust-aresi-ucb",
 ]
 
 augumented_acquisition_list = [
     "aresi-ucb",
-    "robust-aeui-ucb",
-    "robust-aresi-ucb",
 ]
 
 
