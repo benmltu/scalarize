@@ -9,7 +9,7 @@ The experiment script is runnable with `python run_experiments.py <dirname> <lab
 - `<seed>` specifies the initial seed for torch and numpy. The script will write its output file in `<dirname>/<label>/<seed>_<label>.pt` where `<seed>` is written with 4 digits with as many zeros filling in as needed.
 
 ## Algorithms
-There are many algorithms (`<label>`) in the repository. Below, we briefly list the main approaches.
+There are many algorithms (`<label>`) in the repository. Below, we briefly describe the main approaches.
 
 - `sobol` implements the random search algorithm.
 - `eui` implements the expected utility improvement (EUI) acquisition function.
