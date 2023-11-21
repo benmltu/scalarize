@@ -258,7 +258,7 @@ def plot_all_segments_mc(
         fontsize=22, facecolor="white", loc="lower center", framealpha=1
     ).set_zorder(2 * num_iterations)
 
-    ax_bar = fig.add_axes([0.135, -0.00, 0.75, 0.05])
+    ax_bar = fig.add_axes([0.125, -0.00, 0.775, 0.05])
     cbar = matplotlib.colorbar.ColorbarBase(
         ax_bar,
         cmap=cmap,

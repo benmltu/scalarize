@@ -56,6 +56,8 @@ from torch.nn import Module
 
 from scalarize.acquisition.analytic import Uncertainty
 from scalarize.acquisition.monte_carlo import qNoisyExpectedImprovement
+
+from scalarize.data import get_rocket_pf, get_vehicle_pf, get_zdt3_pf
 from scalarize.models.transforms.outcome import GaussianQuantile, Normalize
 from scalarize.test_functions.multi_objective import (
     CabDesign,
@@ -1137,7 +1139,27 @@ def get_problem_reference_point(
     elif "zdt1" in name:
         return -0.1 * torch.ones(1, 1, **tkwargs)
     elif "zdt3" in name:
-        return -0.1 * torch.ones(1, 1, **tkwargs)
+        otf = get_problem_normalize_transform(
+            name=name,
+            util_kwargs=util_kwargs,
+            tkwargs=tkwargs,
+        )
+        if "igd" in label:
+            upper_pf = get_zdt3_pf(upper=True)
+            ref_points, _ = otf(upper_pf)
+            return ref_points
+        elif "d1" in label:
+            lower_pf = get_zdt3_pf(upper=False)
+            ref_points, _ = otf(lower_pf)
+            return ref_points
+        elif "r2" in label:
+            use_utopia = scalarization_kwargs.get("use_utopia", True)
+            if use_utopia:
+                return 1.1 * torch.ones(1, 1, **tkwargs)
+            else:
+                return -0.1 * torch.ones(1, 1, **tkwargs)
+        else:
+            return -0.1 * torch.ones(1, 1, **tkwargs)
     elif "dtlz2" in name:
         otf = get_problem_normalize_transform(
             name=name,
@@ -1161,7 +1183,7 @@ def get_problem_reference_point(
         elif "r2" in label:
             use_utopia = scalarization_kwargs.get("use_utopia", True)
             if use_utopia:
-                return 0.1 * torch.ones(1, 1, **tkwargs)
+                return 1.1 * torch.ones(1, 1, **tkwargs)
             else:
                 return -0.1 * torch.ones(1, 1, **tkwargs)
         else:
@@ -1184,18 +1206,58 @@ def get_problem_reference_point(
         else:
             return -0.1 * torch.ones(1, 1, **tkwargs)
     elif "vehicle" in name:
-        return -0.1 * torch.ones(1, 1, **tkwargs)
+        otf = get_problem_normalize_transform(
+            name=name,
+            util_kwargs=util_kwargs,
+            tkwargs=tkwargs,
+        )
+        if "igd" in label:
+            upper_pf = get_vehicle_pf(upper=True)
+            ref_points, _ = otf(upper_pf)
+            return ref_points
+        elif "d1" in label:
+            lower_pf = get_vehicle_pf(upper=False)
+            ref_points, _ = otf(lower_pf)
+            return ref_points
+        elif "r2" in label:
+            use_utopia = scalarization_kwargs.get("use_utopia", True)
+            if use_utopia:
+                return 1.1 * torch.ones(1, 1, **tkwargs)
+            else:
+                return -0.1 * torch.ones(1, 1, **tkwargs)
+        else:
+            return -0.1 * torch.ones(1, 1, **tkwargs)
     elif "carside" in name:
         return -0.1 * torch.ones(1, 1, **tkwargs)
     elif "marine" in name:
         return -0.1 * torch.ones(1, 1, **tkwargs)
     elif "rocket" in name:
-        return -0.1 * torch.ones(1, 1, **tkwargs)
+        otf = get_problem_normalize_transform(
+            name=name,
+            util_kwargs=util_kwargs,
+            tkwargs=tkwargs,
+        )
+        if "igd" in label:
+            upper_pf = get_rocket_pf(upper=True)
+            ref_points, _ = otf(upper_pf)
+            return ref_points
+        elif "d1" in label:
+            lower_pf = get_rocket_pf(upper=False)
+            ref_points, _ = otf(lower_pf)
+            return ref_points
+        elif "r2" in label:
+            use_utopia = scalarization_kwargs.get("use_utopia", True)
+            if use_utopia:
+                return 1.1 * torch.ones(1, 1, **tkwargs)
+            else:
+                return -0.1 * torch.ones(1, 1, **tkwargs)
+        else:
+            return -0.1 * torch.ones(1, 1, **tkwargs)
     elif "truss" in name:
         if "r2" in label:
             use_utopia = scalarization_kwargs.get("use_utopia", True)
             if use_utopia:
-                return 0.1 * torch.ones(1, 1, **tkwargs)
+                return 1.1 * torch.ones(1, 1, **tkwargs)
             else:
                 return -0.1 * torch.ones(1, 1, **tkwargs)
         else:
