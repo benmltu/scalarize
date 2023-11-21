@@ -13,13 +13,13 @@ from torch import Tensor
 
 
 class ChiSquare(RiskMeasureMCObjective):
-    r"""The chi square risk measure:
+    r"""A worst-case sensitivity approximation to the chi square risk measure:
 
     `ChiSquare({y_i}, epsilon)
         = mean(y_i, i=1,...,n_w) - sqrt(epsilon * var(y_i, i=1,...,n_w))`.
 
-    Equivalently, this risk measure can be formulated as the solution to the
-    constrained optimization problem:
+    Equivalently, this risk measure can be formulated as a worst-case sensitivity
+    approximation to the following constrained optimization problem:
 
     `min_q E_{q(w)}[f(x, w)]` with `Chi2(q, p) <= epsilon`,
 
@@ -57,7 +57,7 @@ class ChiSquare(RiskMeasureMCObjective):
         self.epsilon = epsilon
 
     def forward(self, samples: Tensor, X: Optional[Tensor]) -> Tensor:
-        r"""Calculate the chi square risk measure corresponding to the given samples.
+        r"""Calculate the approximate chi square risk measure for some given samples.
 
         Args:
             samples: A `sample_shape x batch_shape x (q * n_w) x m`-dim tensor of
@@ -81,11 +81,19 @@ class TotalVariation(RiskMeasureMCObjective):
     r"""The total variation risk measure:
 
     `TV({y_i}, epsilon)
+        = (1 - epsilon) CVaR({y_i}, 1 - epsilon) + epsilon * min(y_i, i=1,...,n_w)`,
+
+    where `CVaR({y_i}, alpha)` computes the conditional value-at-risk---see MCVaR
+    description for a more precise description.
+
+    This class also implements the worst-case sensitivity approximation as well:
+
+    `ApproximateTV({y_i}, epsilon)
         = mean(y_i, i=1,...,n_w)
             - epsilon * (max(y_i, i=1,...,n_w) - min(y_i, i=1,...,n_w))`.
 
-    Equivalently, this risk measure can be formulated as the solution to the
-    constrained optimization problem:
+    Equivalently, the total variation risk measure can be formulated as the solution
+    to the following constrained optimization problem:
 
     `min_q E_{q(w)}[f(x, w)]` with `TV(q, p) <= epsilon`,
 
@@ -97,6 +105,8 @@ class TotalVariation(RiskMeasureMCObjective):
         self,
         n_w: int,
         epsilon: float,
+        approximate: bool = False,
+        interpolate: bool = False,
         preprocessing_function: Optional[Callable[[Tensor], Tensor]] = None,
         weights: Optional[Union[List[float], Tensor]] = None,
     ) -> None:
@@ -105,6 +115,12 @@ class TotalVariation(RiskMeasureMCObjective):
         Args:
             n_w: The size of the `w_set` to calculate the risk measure over.
             epsilon: The radius of the divergence penalty.
+            approximate: If True, we use the worst-case sensitivity approximation of
+                the total variation risk measure, else we use the exact calculation.
+            interpolate: If True, we use a linear interpolation of the discrete
+                cumulative distribution function in order to compute the CVaR.
+                Otherwise, we consider the standard CVaR of a discrete random
+                variable.
             preprocessing_function: A preprocessing function to apply to the samples
                 before computing the risk measure. This can be used to scalarize
                 multi-output samples before calculating the risk measure.
@@ -120,11 +136,29 @@ class TotalVariation(RiskMeasureMCObjective):
         )
         if epsilon < 0:
             raise ValueError("epsilon must be non-negative.")
+        if not approximate and epsilon > 1.0:
+            raise ValueError(
+                "epsilon must be less than or equal to one when using the exact "
+                "method."
+            )
         self.epsilon = epsilon
+        self.approximate = approximate
+
+        if not approximate and epsilon < 1.0:
+            # initialize the cvar variables
+            proportion = n_w * (1 - epsilon)
+            self.k = ceil(proportion)
+            # Uniform averaged weights.
+            self.q = torch.ones(self.k) / self.k
+
+            # Use interpolated weights.
+            if interpolate and self.k - proportion > 0:
+                q = torch.ones(self.k) / proportion
+                q[-1] = 1 - torch.sum(q[:-1])
+                self.q = q
 
     def forward(self, samples: Tensor, X: Optional[Tensor]) -> Tensor:
-        r"""Calculate the total variation risk measure corresponding to the given
-        samples.
+        r"""Calculate the total variation risk measure for some given samples.
 
         Args:
             samples: A `sample_shape x batch_shape x (q * n_w) x m`-dim tensor of
@@ -136,13 +170,31 @@ class TotalVariation(RiskMeasureMCObjective):
         Returns:
             A `sample_shape x batch_shape x q`-dim tensor of total variation samples.
         """
-        # `sample_shape x batch_shape x q x n_w`
+        # # `sample_shape x batch_shape x q x n_w`
         prepared_samples = self._prepare_samples(samples)
-        sample_average = torch.mean(prepared_samples, dim=-1)
-        sample_max = torch.max(prepared_samples, dim=-1).values
+
         sample_min = torch.min(prepared_samples, dim=-1).values
 
-        return sample_average - self.epsilon * (sample_max - sample_min)
+        if self.approximate:
+            sample_mean = torch.mean(prepared_samples, dim=-1)
+            sample_max = torch.max(prepared_samples, dim=-1).values
+            sample_risk = sample_mean - self.epsilon * (sample_max - sample_min)
+        else:
+            if self.epsilon != 1.0:
+                top_k = torch.topk(
+                    prepared_samples,
+                    k=self.k,
+                    largest=False,
+                    dim=-1,
+                ).values
+
+                cvar = torch.sum(top_k * self.q.to(top_k), dim=-1)
+            else:
+                cvar = 0.0
+
+            sample_risk = self.epsilon * sample_min + (1 - self.epsilon) * cvar
+
+        return sample_risk
 
 
 class Entropic(RiskMeasureMCObjective):
@@ -151,8 +203,8 @@ class Entropic(RiskMeasureMCObjective):
     `KL({y_i}, rho, epsilon)
         = - rho * epsilon - rho * log(mean(exp(y_i / rho)), i=1,...,n_w).
 
-    This risk measure is an approximate solution to the constrained optimization
-    problem:
+    This risk measure is an approximate solution to the following constrained
+    optimization problem:
 
     `min_q E_{q(w)}[f(x, w)]` with `KL(q, p) <= epsilon`,
 
@@ -198,7 +250,7 @@ class Entropic(RiskMeasureMCObjective):
         self.rho = rho
 
     def forward(self, samples: Tensor, X: Optional[Tensor]) -> Tensor:
-        r"""Calculate the entropic risk measure corresponding to the given samples.
+        r"""Calculate the entropic risk measure for some given samples.
 
         Args:
             samples: A `sample_shape x batch_shape x (q * n_w) x m`-dim tensor of
@@ -293,7 +345,7 @@ class MCVaR(RiskMeasureMCObjective):
             self.q = q
 
     def forward(self, samples: Tensor, X: Optional[Tensor] = None) -> Tensor:
-        r"""Calculate the MCVaR corresponding to the given samples.
+        r"""Calculate the MCVaR for some given samples.
 
         Args:
             samples: A `sample_shape x batch_shape x (q * n_w) x m`-dim tensor of

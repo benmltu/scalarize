@@ -18,6 +18,6 @@ This code was initially implemented with the following dependencies:
 - The experiments folder contains the scripts and configurations which are used to execute the experiments. 
 - The notebook folder contains the notebooks used to obtain the plots used in the paper.
 - The plot_experiments folder contains the notebooks used to plot the results of the experiments.
-- The scalarize folder contains the code needed to execute these strategies. The folder is organised is a similar way to the BoTorch repository.
+- The scalarize folder contains the code needed to execute these strategies. 
 
 If you want to discuss more about the code presented here, feel free to e-mail me ben.tu16@imperial.ac.uk.

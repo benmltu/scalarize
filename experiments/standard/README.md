@@ -1,4 +1,4 @@
-# Scalarize experiments
+# Standard experiments
 
 The experiment script is runnable with `python run_experiments.py <dirname> <label> <seed>`.
 

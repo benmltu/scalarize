@@ -1,4 +1,4 @@
-# Scalarize experiments
+# Robust experiments
 
 The experiment script is runnable with `python run_robust_experiments.py <dirname> <label> <seed>`.
 
