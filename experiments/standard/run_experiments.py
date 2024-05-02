@@ -3,8 +3,6 @@
 r"""
 The main script used to run the experiments.
 
-This was adapted from the BO loop used in
-https://github.com/facebookresearch/robust_mobo/tree/main/experiments/experiment_v1/main.py
 """
 
 import errno

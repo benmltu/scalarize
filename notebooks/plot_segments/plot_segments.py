@@ -255,7 +255,10 @@ def plot_all_segments_mc(
             plt.ylabel(r"$s_{\boldsymbol{\theta}}(f(\mathbf{x}))$", fontsize=25)
 
     axes[0, 0].legend(
-        fontsize=22, facecolor="white", loc="lower center", framealpha=1
+        fontsize=22,
+        facecolor="w",
+        loc="lower center",
+        framealpha=0.9,
     ).set_zorder(2 * num_iterations)
 
     ax_bar = fig.add_axes([0.125, -0.00, 0.775, 0.05])
