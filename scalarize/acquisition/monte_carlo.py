@@ -224,7 +224,10 @@ class qNoisyExpectedImprovement(
             of model and input `X`.
         """
         q = X.shape[-2]
-        X_full = torch.cat([match_batch_shape(self.X_baseline, X), X], dim=-2)
+        if self.X_baseline is not None:
+            X_full = torch.cat([match_batch_shape(self.X_baseline, X), X], dim=-2)
+        else:
+            X_full = X
         # TODO: Implement more efficient way to compute posterior over both training and
         # test points in GPyTorch (https://github.com/cornellius-gp/gpytorch/issues/567)
         posterior = self.model.posterior(
@@ -235,5 +238,11 @@ class qNoisyExpectedImprovement(
         else:
             samples = self.get_posterior_samples(posterior)
             obj = self.objective(samples, X=X_full)
-            diffs = obj[..., -q:].max(dim=-1).values - obj[..., :-q].max(dim=-1).values
+            if obj.shape[-1] == 1:
+                diffs = obj[..., -1]
+            else:
+                diffs = (
+                    obj[..., -q:].max(dim=-1).values - obj[..., :-q].max(dim=-1).values
+                )
+
         return diffs.clamp_min(0).mean(dim=0)
