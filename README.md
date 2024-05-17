@@ -4,6 +4,7 @@ This repository contains the code for our papers:
 
 1. Multi-objective optimisation via the R2 utilities (https://arxiv.org/abs/2305.11774)
 2. Random Pareto front surfaces (https://arxiv.org/abs/2405.01404)
+3. Scalarisation-based risk concepts for robust multi-objective optimisation (https://arxiv.org/abs/2405.10221)
 
 At its core, the scalarize code provides a useful collection of utilities for scalarization functions, scalarization parameters and scalarized objective functions that can be used alongside standard routines from NumPy, SciPy and PyTorch.
 
