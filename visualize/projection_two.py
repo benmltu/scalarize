@@ -191,14 +191,14 @@ expectation_text = (
     r"Expectation: $\mathbb{{E}}_{{\boldsymbol{{\omega}}}}"
     r"[\mathcal{P}_{I, \mathbf{v}} "
     r"[Y_{\boldsymbol{\eta}, f}^*(\boldsymbol{{\omega}})]"
-    r"] \in \mathbb{R}^2$"
+    r"] \subset \mathbb{R}^2$"
 )
 
 quantile_text = (
     r"Quantiles: $\mathcal{Q}_{{\boldsymbol{{\omega}}}}"
     r"[\mathcal{P}_{I, \mathbf{v}} "
     r"[Y_{\boldsymbol{\eta}, f}^*(\boldsymbol{{\omega}})], \alpha"
-    r"] \in \mathbb{R}^2$"
+    r"] \subset \mathbb{R}^2$"
 )
 
 red_line = mlines.Line2D(
